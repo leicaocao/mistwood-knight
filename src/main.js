@@ -46,7 +46,7 @@ scene.add(new THREE.HemisphereLight(0xeaf5ff, 0x3b5136, 2.3));
 const sun = new THREE.DirectionalLight(0xffefc2, 3.2);
 sun.position.set(-14, 22, 10);
 sun.castShadow = true;
-sun.shadow.mapSize.set(1536, 1536);
+sun.shadow.mapSize.set(1024, 1024);
 sun.shadow.camera.left = -32;
 sun.shadow.camera.right = 32;
 sun.shadow.camera.top = 32;
@@ -160,12 +160,12 @@ async function loadForestTemplates() {
   };
 }
 
-function placeModel(template, x, z, scale, rotation) {
+function placeModel(template, x, z, scale, rotation, castShadow = false) {
   const object = template.clone(true);
   object.position.set(x, 0, z);
   object.rotation.y = rotation;
   object.scale.setScalar(scale);
-  setShadows(object);
+  setShadows(object, castShadow);
   scene.add(object);
   return object;
 }
@@ -184,7 +184,8 @@ function populateForest(templates) {
       x,
       z,
       0.92 + random() * 0.46,
-      random() * Math.PI * 2
+      random() * Math.PI * 2,
+      radius < 25
     );
   }
 
@@ -200,7 +201,8 @@ function populateForest(templates) {
       x,
       z,
       isBush ? 0.7 + random() * 0.85 : 0.55 + random() * 0.9,
-      random() * Math.PI * 2
+      random() * Math.PI * 2,
+      false
     );
   }
 }
