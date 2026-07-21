@@ -6,4 +6,11 @@
 - 奔跑：按住 Shift
 - 手机：屏幕虚拟方向键
 
-场景与角色均由 Three.js 几何体程序生成，不依赖外部 3D 模型或 CDN。
+角色、骨骼动画、树木、灌木与岩石均使用真正的 GLB/GLTF 文件；Three.js 已打包进 `game.js`，不依赖外部 CDN。
+
+## 素材许可
+
+- KayKit Adventurers Character Pack 2.0 — CC0
+- KayKit Forest Nature Pack 1.0 — CC0
+
+素材作者：Kay Lousberg（KayKit）。许可证原文保存在 `licenses/`。
