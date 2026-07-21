@@ -28,10 +28,10 @@ function setShadows(root, cast = true) {
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xb9d8c2);
-scene.fog = new THREE.FogExp2(0x9bb9a4, 0.021);
+scene.fog = new THREE.FogExp2(0x9bb9a4, 0.0175);
 
-const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 180);
-camera.position.set(0, 5.3, 8.2);
+const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 180);
+camera.position.set(8.8, 13.5, 11.8);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
@@ -267,10 +267,11 @@ const cameraGoal = new THREE.Vector3();
 const lookGoal = new THREE.Vector3();
 const desiredQuaternion = new THREE.Quaternion();
 const desiredEuler = new THREE.Euler();
-const cameraForward = new THREE.Vector3(0, 0, -1);
-const cameraRight = new THREE.Vector3(1, 0, 0);
-const cameraOffset = new THREE.Vector3(0, 5.3, 8.2);
-const lookLift = new THREE.Vector3(0, 1.35, 0);
+const cameraOffset = new THREE.Vector3(8.8, 13.5, 11.8);
+const cameraForward = new THREE.Vector3(-cameraOffset.x, 0, -cameraOffset.z).normalize();
+const cameraRight = new THREE.Vector3().crossVectors(cameraForward, new THREE.Vector3(0, 1, 0)).normalize();
+const lookLift = new THREE.Vector3(0, 0.55, 0);
+const lookAhead = cameraForward.clone().multiplyScalar(2.1);
 const stopped = new THREE.Vector3();
 let previousTime = performance.now();
 let currentState = "idle";
@@ -317,7 +318,7 @@ function tick(time) {
 
     cameraGoal.copy(knight.root.position).add(cameraOffset);
     camera.position.lerp(cameraGoal, 1 - Math.exp(-delta * 4.7));
-    lookGoal.copy(knight.root.position).add(lookLift);
+    lookGoal.copy(knight.root.position).add(lookLift).add(lookAhead);
     camera.lookAt(lookGoal);
   }
 
