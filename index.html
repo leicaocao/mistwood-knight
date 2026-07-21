@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#142b22" />
+    <meta name="description" content="雾林骑士：一个可移动骑士与低多边形森林的 Three.js 测试场景。" />
+    <title>雾林骑士</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <script defer src="./game.js"></script>
+  </head>
+  <body>
+    <main class="game-shell">
+      <div id="scene" class="scene" aria-label="可移动骑士的 Three.js 森林场景"></div>
+
+      <header class="game-header">
+        <div>
+          <p class="eyebrow">THREE.JS FOREST STUDY</p>
+          <h1>雾林骑士</h1>
+        </div>
+        <div class="status"><span></span><strong id="motion">待命</strong></div>
+      </header>
+
+      <aside class="instructions">
+        <p>探索林间空地</p>
+        <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><span>移动</span></div>
+        <div><kbd>⇧</kbd><span>按住奔跑</span></div>
+      </aside>
+
+      <div id="loading" class="loading" role="status">
+        <div class="loading-card">
+          <div class="crest">♞</div>
+          <p>正在进入森林</p>
+        </div>
+      </div>
+
+      <div class="touch-controls" aria-label="触控移动按钮">
+        <button class="up" type="button" data-key="forward" aria-label="向前">▲</button>
+        <button class="left" type="button" data-key="left" aria-label="向左">◀</button>
+        <button class="down" type="button" data-key="back" aria-label="向后">▼</button>
+        <button class="right" type="button" data-key="right" aria-label="向右">▶</button>
+        <button class="sprint" type="button" data-key="run" aria-label="奔跑">跑</button>
+      </div>
+
+      <footer class="credit">Three.js 程序生成场景 · 无需加载外部模型</footer>
+    </main>
+  </body>
+</html>
