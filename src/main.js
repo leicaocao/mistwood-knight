@@ -31,7 +31,7 @@ scene.background = new THREE.Color(0xb9d8c2);
 scene.fog = new THREE.FogExp2(0x9bb9a4, 0.021);
 
 const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 180);
-camera.position.set(7.2, 5.2, 9.4);
+camera.position.set(0, 5.3, 8.2);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
@@ -109,7 +109,6 @@ async function createKnightRig() {
   visual.add(model);
 
   setShadows(model);
-  model.rotation.y = Math.PI;
   model.updateMatrixWorld(true);
 
   const initialBox = new THREE.Box3().setFromObject(model);
@@ -266,8 +265,9 @@ const cameraGoal = new THREE.Vector3();
 const lookGoal = new THREE.Vector3();
 const desiredQuaternion = new THREE.Quaternion();
 const desiredEuler = new THREE.Euler();
-const facing = new THREE.Vector3();
-const cameraLift = new THREE.Vector3(0, 4.7, 0);
+const cameraForward = new THREE.Vector3(0, 0, -1);
+const cameraRight = new THREE.Vector3(1, 0, 0);
+const cameraOffset = new THREE.Vector3(0, 5.3, 8.2);
 const lookLift = new THREE.Vector3(0, 1.35, 0);
 const stopped = new THREE.Vector3();
 let previousTime = performance.now();
@@ -286,11 +286,9 @@ function tick(time) {
   previousTime = time;
 
   if (knight) {
-    move.set(
-      (keys.right ? 1 : 0) - (keys.left ? 1 : 0),
-      0,
-      (keys.back ? 1 : 0) - (keys.forward ? 1 : 0)
-    );
+    const forwardInput = (keys.forward ? 1 : 0) - (keys.back ? 1 : 0);
+    const rightInput = (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
+    move.copy(cameraForward).multiplyScalar(forwardInput).addScaledVector(cameraRight, rightInput);
 
     const moving = move.lengthSq() > 0;
     const running = moving && keys.run;
@@ -315,8 +313,7 @@ function tick(time) {
       knight.root.position.z *= 41 / distance;
     }
 
-    facing.set(0, 0, 1).applyQuaternion(knight.root.quaternion);
-    cameraGoal.copy(knight.root.position).addScaledVector(facing, -7.1).add(cameraLift);
+    cameraGoal.copy(knight.root.position).add(cameraOffset);
     camera.position.lerp(cameraGoal, 1 - Math.exp(-delta * 4.7));
     lookGoal.copy(knight.root.position).add(lookLift);
     camera.lookAt(lookGoal);
