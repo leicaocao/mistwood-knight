@@ -57,6 +57,19 @@ h1 { margin: 0; font-family: Georgia, "Songti SC", serif; font-size: clamp(30px,
 .status span { width: 7px; height: 7px; border-radius: 50%; background: #d7c17a; box-shadow: 0 0 10px #f4dd92; }
 .status strong { font-weight: 600; }
 
+.hud-status { display: flex; align-items: flex-start; gap: 10px; pointer-events: auto; }
+.world-state { display: flex; align-items: center; gap: 9px; min-width: 154px; padding: 8px 12px; border: 1px solid rgba(244, 236, 203, .22); border-radius: 12px; background: rgba(17, 40, 31, .62); color: #f5f1df; font: inherit; text-align: left; backdrop-filter: blur(12px); cursor: pointer; }
+.world-state:hover { background: rgba(33, 58, 43, .78); }
+.world-state span:last-child { display: grid; gap: 2px; }
+.world-state strong { font-size: 11px; letter-spacing: .04em; }
+.world-state small { color: rgba(245, 241, 223, .58); font-size: 9px; letter-spacing: .1em; }
+.world-icon { color: #f2d17d; font-size: 20px; filter: drop-shadow(0 0 8px rgba(242, 209, 125, .45)); }
+.world-state.night { border-color: rgba(255, 82, 108, .4); background: rgba(42, 18, 38, .74); }
+.world-state.night .world-icon { color: #ff526c; filter: drop-shadow(0 0 9px rgba(255, 50, 83, .7)); }
+
+.threat-banner { position: absolute; top: max(92px, calc(env(safe-area-inset-top) + 68px)); left: 50%; z-index: 3; padding: 9px 15px; border: 1px solid rgba(255, 91, 112, .35); border-radius: 99px; background: rgba(48, 12, 29, .76); color: #ffd7dc; font-size: 11px; letter-spacing: .08em; opacity: 0; transform: translate(-50%, -8px); transition: opacity .3s ease, transform .3s ease; pointer-events: none; backdrop-filter: blur(12px); }
+.threat-banner.show { opacity: 1; transform: translate(-50%, 0); }
+
 .instructions {
   position: absolute;
   left: 30px;
@@ -107,6 +120,8 @@ kbd { display: grid; min-width: 22px; height: 22px; place-items: center; border:
   .game-header { inset-inline: 20px; }
   h1 { font-size: 28px; }
   .status { padding: 8px 11px; }
+  .world-state { min-width: 0; padding: 8px 10px; }
+  .world-state strong { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) { .loading-card .crest { animation: none; } }
