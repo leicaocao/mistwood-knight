@@ -114,6 +114,7 @@ kbd { display: grid; min-width: 22px; height: 22px; place-items: center; border:
   .touch-controls .up { left: 76px; bottom: calc(95px + env(safe-area-inset-bottom)); }
   .touch-controls .down { left: 76px; bottom: calc(43px + env(safe-area-inset-bottom)); }
   .touch-controls .sprint { right: 28px; bottom: calc(55px + env(safe-area-inset-bottom)); width: 62px; height: 62px; color: #ead58f; }
+  .touch-controls .attack { right: 42px; bottom: calc(133px + env(safe-area-inset-bottom)); width: 68px; height: 68px; border-color: rgba(238, 203, 112, .55); background: rgba(91, 42, 27, .72); color: #ffe39a; font-size: 20px; box-shadow: 0 0 24px rgba(225, 165, 69, .18); }
 }
 
 @media (max-width: 560px) {

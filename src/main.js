@@ -13,6 +13,7 @@ const worldIcon = document.querySelector("#world-icon");
 const worldLabel = document.querySelector("#world-label");
 const worldClock = document.querySelector("#world-clock");
 const threatBanner = document.querySelector("#threat-banner");
+const attackButton = document.querySelector("#attack-button");
 const keys = { forward: false, back: false, left: false, right: false, run: false };
 
 function seededRandom(seed) {
@@ -113,10 +114,13 @@ const loader = new GLTFLoader(manager);
 const loadGLTF = (url) => loader.loadAsync(url);
 
 async function createKnightRig() {
-  const [character, generalAnimations, movementAnimations] = await Promise.all([
+  const [character, generalAnimations, movementAnimations, combatAnimations, swordAsset, shieldAsset] = await Promise.all([
     loadGLTF("./models/characters/Knight.glb"),
     loadGLTF("./models/animations/Rig_Medium_General.glb"),
     loadGLTF("./models/animations/Rig_Medium_MovementBasic.glb"),
+    loadGLTF("./models/animations/Rig_Medium_CombatMelee.glb"),
+    loadGLTF("./models/player-gear/sword_1handed.gltf"),
+    loadGLTF("./models/player-gear/shield_badge.gltf"),
   ]);
 
   const root = new THREE.Group();
@@ -126,6 +130,13 @@ async function createKnightRig() {
   visual.add(model);
 
   setShadows(model);
+  const rightHand = model.getObjectByName("handslotr");
+  const leftHand = model.getObjectByName("handslotl");
+  if (!rightHand || !leftHand) throw new Error("Knight hand slots are missing");
+  rightHand.add(swordAsset.scene);
+  leftHand.add(shieldAsset.scene);
+  setShadows(swordAsset.scene);
+  setShadows(shieldAsset.scene);
   model.updateMatrixWorld(true);
 
   const initialBox = new THREE.Box3().setFromObject(model);
@@ -139,7 +150,7 @@ async function createKnightRig() {
   root.position.set(0, 0, 1.5);
   root.rotation.y = Math.PI;
 
-  const clips = [...generalAnimations.animations, ...movementAnimations.animations];
+  const clips = [...generalAnimations.animations, ...movementAnimations.animations, ...combatAnimations.animations];
   const clipByName = (name) => THREE.AnimationClip.findByName(clips, name);
   const mixer = new THREE.AnimationMixer(model);
   const actions = {
@@ -147,10 +158,24 @@ async function createKnightRig() {
     walk: mixer.clipAction(clipByName("Walking_A")),
     run: mixer.clipAction(clipByName("Running_A")),
   };
+  const attackActions = [
+    mixer.clipAction(clipByName("Melee_1H_Attack_Slice_Horizontal")),
+    mixer.clipAction(clipByName("Melee_1H_Attack_Slice_Diagonal")),
+    mixer.clipAction(clipByName("Melee_1H_Attack_Chop")),
+  ];
+  for (const action of attackActions) {
+    action.setLoop(THREE.LoopOnce, 1);
+    action.clampWhenFinished = true;
+  }
   actions.idle.play();
   let activeAction = actions.idle;
+  let attackTimer = 0;
+  let comboWindow = 0;
+  let comboIndex = -1;
+  let queuedAttack = false;
 
   const setAnimation = (state) => {
+    if (attackTimer > 0) return;
     const nextAction = actions[state];
     if (!nextAction || nextAction === activeAction) return;
     nextAction.reset().setEffectiveTimeScale(1).setEffectiveWeight(1).fadeIn(0.18).play();
@@ -158,7 +183,41 @@ async function createKnightRig() {
     activeAction = nextAction;
   };
 
-  return { root, visual, mixer, setAnimation };
+  const beginAttack = (continueCombo = false) => {
+    if (!continueCombo && comboWindow <= 0) comboIndex = -1;
+    comboIndex = (comboIndex + 1) % attackActions.length;
+    const nextAction = attackActions[comboIndex];
+    queuedAttack = false;
+    comboWindow = 0;
+    attackTimer = nextAction.getClip().duration / 1.12;
+    nextAction.reset().setEffectiveTimeScale(1.12).setEffectiveWeight(1).fadeIn(0.07).play();
+    if (activeAction !== nextAction) activeAction.fadeOut(0.07);
+    activeAction = nextAction;
+  };
+
+  const requestAttack = () => {
+    if (attackTimer > 0) queuedAttack = true;
+    else beginAttack();
+  };
+
+  const update = (delta, fallbackState) => {
+    mixer.update(delta);
+    if (attackTimer > 0) {
+      attackTimer -= delta;
+      if (attackTimer <= 0) {
+        attackTimer = 0;
+        if (queuedAttack) beginAttack(true);
+        else {
+          comboWindow = 0.65;
+          setAnimation(fallbackState);
+        }
+      }
+    } else if (comboWindow > 0) {
+      comboWindow -= delta;
+    }
+  };
+
+  return { root, visual, mixer, setAnimation, requestAttack, isAttacking: () => attackTimer > 0, update };
 }
 
 function fitModelToHeight(model, targetHeight) {
@@ -546,11 +605,25 @@ for (const eventName of ["keydown", "keyup"]) {
 }
 
 window.addEventListener("keydown", (event) => {
-  if (event.code !== "KeyN" || event.repeat) return;
+  if (event.repeat) return;
+  if (event.code === "KeyJ") {
+    event.preventDefault();
+    knight?.requestAttack();
+    return;
+  }
+  if (event.code !== "KeyN") return;
   event.preventDefault();
   toggleDayNight();
 });
 worldToggle.addEventListener("click", toggleDayNight);
+
+renderer.domElement.addEventListener("pointerdown", (event) => {
+  if (event.pointerType === "mouse" && event.button === 0) knight?.requestAttack();
+});
+attackButton.addEventListener("pointerdown", (event) => {
+  event.preventDefault();
+  knight?.requestAttack();
+});
 
 document.querySelectorAll("[data-key]").forEach((button) => {
   const action = button.dataset.key;
@@ -602,7 +675,7 @@ function tick(time) {
     const running = moving && keys.run;
     if (moving) {
       move.normalize();
-      const speed = running ? 6.2 : 3.35;
+      const speed = knight.isAttacking() ? 0.8 : running ? 6.2 : 3.35;
       velocity.lerp(move.multiplyScalar(speed), 1 - Math.exp(-delta * 14));
       desiredEuler.set(0, Math.atan2(velocity.x, velocity.z), 0);
       desiredQuaternion.setFromEuler(desiredEuler);
@@ -613,7 +686,8 @@ function tick(time) {
       showState("idle");
     }
 
-    knight.mixer.update(delta);
+    knight.update(delta, currentState);
+    motion.textContent = knight.isAttacking() ? "攻击" : currentState === "run" ? "奔跑" : currentState === "walk" ? "行走" : "待命";
     knight.root.position.addScaledVector(velocity, delta);
     const distance = Math.hypot(knight.root.position.x, knight.root.position.z);
     if (distance > 41) {

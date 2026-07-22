@@ -6,8 +6,8 @@
     <meta name="theme-color" content="#142b22" />
     <meta name="description" content="雾林骑士：一个可移动骑士与低多边形森林的 Three.js 测试场景。" />
     <title>雾林骑士</title>
-    <link rel="stylesheet" href="./styles.css?v=3" />
-    <script defer src="./game.js?v=6"></script>
+    <link rel="stylesheet" href="./styles.css?v=4" />
+    <script defer src="./game.js?v=7"></script>
   </head>
   <body>
     <main class="game-shell">
@@ -34,6 +34,7 @@
         <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><span>移动</span></div>
         <div><kbd>⇧</kbd><span>按住奔跑</span></div>
         <div><kbd>N</kbd><span>切换昼夜</span></div>
+        <div><kbd>J</kbd><span>攻击 / 左键</span></div>
       </aside>
 
       <div id="loading" class="loading" role="status">
@@ -51,6 +52,7 @@
         <button class="down" type="button" data-key="back" aria-label="向后">▼</button>
         <button class="right" type="button" data-key="right" aria-label="向右">▶</button>
         <button class="sprint" type="button" data-key="run" aria-label="奔跑">跑</button>
+        <button class="attack" id="attack-button" type="button" aria-label="攻击">剑</button>
       </div>
 
       <footer class="credit">Three.js · KayKit CC0 骑士、骷髅与骨骼动画</footer>
