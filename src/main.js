@@ -160,13 +160,13 @@ const isInsideCityStreet = (x, z) =>
   (Math.abs(x) < 3.25 && Math.abs(z) > 21.5 && Math.abs(z) < 41) ||
   (Math.abs(z) < 3.25 && Math.abs(x) > 21.5 && Math.abs(x) < 41);
 const cityWallHalfExtent = 37;
-const cityWallThickness = 1.55;
+const cityWallThickness = 4.2;
 const cityGateOpeningHalf = 3.55;
 const isInsideWalledCity = (x, z) =>
   Math.abs(x) < cityWallHalfExtent - 0.7 && Math.abs(z) < cityWallHalfExtent - 0.7;
 const isInsideCityWallStructure = (x, z) =>
-  (Math.abs(Math.abs(x) - cityWallHalfExtent) < 3.2 && Math.abs(z) < cityWallHalfExtent + 3.2) ||
-  (Math.abs(Math.abs(z) - cityWallHalfExtent) < 3.2 && Math.abs(x) < cityWallHalfExtent + 3.2);
+  (Math.abs(Math.abs(x) - cityWallHalfExtent) < 4.4 && Math.abs(z) < cityWallHalfExtent + 4.4) ||
+  (Math.abs(Math.abs(z) - cityWallHalfExtent) < 4.4 && Math.abs(x) < cityWallHalfExtent + 4.4);
 
 const cityStreetMaterial = new THREE.MeshStandardMaterial({ color: 0x9c9077, roughness: 0.98 });
 const cityCurbMaterial = new THREE.MeshStandardMaterial({ color: 0x6e6b62, roughness: 0.96 });
@@ -379,6 +379,7 @@ const cityWallGoldMaterial = new THREE.MeshStandardMaterial({ color: 0xc49c3f, r
 const cityWallGroup = new THREE.Group();
 const cityWallFlags = [];
 const cityGateLights = [];
+const cityWallNpcSpots = [];
 
 function addCityWallSegment(x, z, width, depth) {
   const segment = new THREE.Group();
@@ -402,11 +403,12 @@ function addCityWallSegment(x, z, width, depth) {
 
   const horizontal = width > depth;
   const length = horizontal ? width : depth;
+  const walkwayWidth = Math.max(2.8, (horizontal ? depth : width) - 0.9);
   const wallWalk = new THREE.Mesh(
     new THREE.BoxGeometry(
-      horizontal ? width - 0.25 : width + 0.78,
-      0.14,
-      horizontal ? depth + 0.78 : depth - 0.25
+      horizontal ? width - 0.25 : walkwayWidth,
+      0.16,
+      horizontal ? walkwayWidth : depth - 0.25
     ),
     cityWallWalkMaterial
   );
@@ -458,17 +460,50 @@ function addCityWallSegment(x, z, width, depth) {
     }
   }
 
+  for (const face of [-1, 1]) {
+    const parapetBase = new THREE.Mesh(
+      new THREE.BoxGeometry(
+        horizontal ? width : 0.42,
+        0.42,
+        horizontal ? 0.42 : depth
+      ),
+      cityWallMaterial
+    );
+    parapetBase.position.set(
+      horizontal ? 0 : face * (width / 2 - 0.21),
+      3.78,
+      horizontal ? face * (depth / 2 - 0.21) : 0
+    );
+    parapetBase.castShadow = true;
+    parapetBase.receiveShadow = true;
+    segment.add(parapetBase);
+  }
+
   const count = Math.max(2, Math.floor(length / 2.05));
   for (let index = 0; index < count; index += 1) {
     const along = -length / 2 + ((index + 0.5) * length) / count;
-    const merlon = new THREE.Mesh(
-      new THREE.BoxGeometry(horizontal ? 1.05 : 1.7, 0.74, horizontal ? 1.7 : 1.05),
-      cityWallMaterial
+    for (const face of [-1, 1]) {
+      const merlon = new THREE.Mesh(
+        new THREE.BoxGeometry(horizontal ? 1.05 : 0.72, 0.76, horizontal ? 0.72 : 1.05),
+        cityWallMaterial
+      );
+      merlon.position.set(
+        horizontal ? along : face * (width / 2 - 0.36),
+        4.24,
+        horizontal ? face * (depth / 2 - 0.36) : along
+      );
+      merlon.castShadow = true;
+      merlon.receiveShadow = true;
+      segment.add(merlon);
+    }
+  }
+
+  const patrolSpotCount = Math.max(3, Math.floor(length / 6));
+  for (let index = 0; index < patrolSpotCount; index += 1) {
+    const along = -length * 0.4 + (index * length * 0.8) / Math.max(1, patrolSpotCount - 1);
+    cityWallNpcSpots.push(
+      new THREE.Vector3(horizontal ? x + along : x, 3.66, horizontal ? z : z + along)
     );
-    merlon.position.set(horizontal ? along : 0, 3.85, horizontal ? 0 : along);
-    merlon.castShadow = true;
-    merlon.receiveShadow = true;
-    segment.add(merlon);
   }
   cityWallGroup.add(segment);
 }
@@ -494,6 +529,34 @@ function addCityCornerTower(x, z) {
   body.castShadow = true;
   body.receiveShadow = true;
   tower.add(body);
+
+  const guardDeck = new THREE.Mesh(
+    new THREE.CylinderGeometry(3.7, 3.7, 0.18, 8),
+    cityWallWalkMaterial
+  );
+  guardDeck.position.y = 3.58;
+  guardDeck.rotation.y = Math.PI / 8;
+  guardDeck.castShadow = true;
+  guardDeck.receiveShadow = true;
+  tower.add(guardDeck);
+
+  for (let index = 0; index < 8; index += 1) {
+    const angle = (index / 8) * Math.PI * 2 + Math.PI / 8;
+    const merlon = new THREE.Mesh(
+      new THREE.BoxGeometry(0.85, 0.76, 0.7),
+      cityWallMaterial
+    );
+    merlon.position.set(Math.sin(angle) * 3.3, 4.05, Math.cos(angle) * 3.3);
+    merlon.rotation.y = angle;
+    merlon.castShadow = true;
+    tower.add(merlon);
+  }
+
+  for (const angle of [Math.PI / 4, Math.PI * 3 / 4, Math.PI * 5 / 4, Math.PI * 7 / 4]) {
+    cityWallNpcSpots.push(
+      new THREE.Vector3(x + Math.sin(angle) * 2.85, 3.68, z + Math.cos(angle) * 2.85)
+    );
+  }
 
   const band = new THREE.Mesh(
     new THREE.CylinderGeometry(2.5, 2.5, 0.32, 8),
@@ -539,7 +602,7 @@ for (const x of [-36.7, 36.7]) {
   for (const z of [-36.7, 36.7]) addCityCornerTower(x, z);
 }
 
-function addCityGatehouse(x, z, rotation) {
+function addCityGatehouse(x, z, rotation, inwardSign) {
   const gatehouse = new THREE.Group();
   gatehouse.position.set(x, 0, z);
   gatehouse.rotation.y = rotation;
@@ -604,6 +667,47 @@ function addCityGatehouse(x, z, rotation) {
   lintelTrim.castShadow = true;
   gatehouse.add(lintelTrim);
 
+  const gateWalk = new THREE.Mesh(
+    new THREE.BoxGeometry(7.45, 0.18, cityWallThickness - 0.78),
+    cityWallWalkMaterial
+  );
+  gateWalk.position.y = 3.58;
+  gateWalk.castShadow = true;
+  gateWalk.receiveShadow = true;
+  gatehouse.add(gateWalk);
+
+  for (let stepIndex = 0; stepIndex < 10; stepIndex += 1) {
+    const stepHeight = (stepIndex + 1) * 0.34;
+    const step = new THREE.Mesh(
+      new THREE.BoxGeometry(2.05, stepHeight, 0.58),
+      cityWallWalkMaterial
+    );
+    step.position.set(
+      6.72,
+      stepHeight / 2,
+      inwardSign * (5.15 - stepIndex * 0.43)
+    );
+    step.castShadow = true;
+    step.receiveShadow = true;
+    gatehouse.add(step);
+  }
+
+  const stairRail = new THREE.Mesh(
+    new THREE.BoxGeometry(0.18, 1.05, 4.55),
+    cityWallTrimMaterial
+  );
+  stairRail.position.set(7.82, 2.15, inwardSign * 3.22);
+  stairRail.rotation.x = inwardSign * -0.63;
+  stairRail.castShadow = true;
+  gatehouse.add(stairRail);
+
+  for (const xOffset of [-2.6, 0, 2.6]) {
+    const spot = new THREE.Vector3(xOffset, 3.68, 0);
+    spot.applyAxisAngle(new THREE.Vector3(0, 1, 0), rotation);
+    spot.add(new THREE.Vector3(x, 0, z));
+    cityWallNpcSpots.push(spot);
+  }
+
   for (const xOffset of [-2.75, -0.9, 0.9, 2.75]) {
     const merlon = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.68, 2.05), cityWallMaterial);
     merlon.position.set(xOffset, 5.55, 0);
@@ -649,10 +753,11 @@ function addCityGatehouse(x, z, rotation) {
   cityWallGroup.add(gatehouse);
 }
 
-addCityGatehouse(0, -cityWallHalfExtent, 0);
-addCityGatehouse(0, cityWallHalfExtent, 0);
-addCityGatehouse(-cityWallHalfExtent, 0, Math.PI / 2);
-addCityGatehouse(cityWallHalfExtent, 0, Math.PI / 2);
+addCityGatehouse(0, -cityWallHalfExtent, 0, 1);
+addCityGatehouse(0, cityWallHalfExtent, 0, -1);
+addCityGatehouse(-cityWallHalfExtent, 0, Math.PI / 2, 1);
+addCityGatehouse(cityWallHalfExtent, 0, Math.PI / 2, -1);
+cityWallGroup.userData.npcPatrolSpots = cityWallNpcSpots;
 scene.add(cityWallGroup);
 
 const manager = new THREE.LoadingManager();
