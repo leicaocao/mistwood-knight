@@ -14,6 +14,9 @@ const worldLabel = document.querySelector("#world-label");
 const worldClock = document.querySelector("#world-clock");
 const threatBanner = document.querySelector("#threat-banner");
 const attackButton = document.querySelector("#attack-button");
+const townUpgradeButton = document.querySelector("#town-upgrade");
+const townLevelLabel = document.querySelector("#town-level");
+const townActionLabel = document.querySelector("#town-action");
 const keys = { forward: false, back: false, left: false, right: false, run: false };
 
 function seededRandom(seed) {
@@ -100,6 +103,13 @@ clearing.position.y = 0.02;
 clearing.receiveShadow = true;
 scene.add(clearing);
 
+const townSquareMaterial = new THREE.MeshStandardMaterial({ color: 0xa99a78, roughness: 1 });
+const townSquare = new THREE.Mesh(new THREE.CircleGeometry(7.5, 48), townSquareMaterial);
+townSquare.rotation.x = -Math.PI / 2;
+townSquare.position.y = 0.035;
+townSquare.receiveShadow = true;
+scene.add(townSquare);
+
 const manager = new THREE.LoadingManager();
 manager.onProgress = (_url, loaded, total) => {
   const percent = total ? Math.round((loaded / total) * 100) : 0;
@@ -147,7 +157,7 @@ async function createKnightRig() {
   const scaledBox = new THREE.Box3().setFromObject(model);
   model.position.y -= scaledBox.min.y;
 
-  root.position.set(0, 0, 1.5);
+  root.position.set(0, 0, 8.2);
   root.rotation.y = Math.PI;
 
   const clips = [...generalAnimations.animations, ...movementAnimations.animations, ...combatAnimations.animations];
@@ -228,6 +238,63 @@ function fitModelToHeight(model, targetHeight) {
   model.updateMatrixWorld(true);
   const scaledBox = new THREE.Box3().setFromObject(model);
   model.position.y -= scaledBox.min.y;
+}
+
+async function createTownCenter() {
+  const assets = await Promise.all([
+    loadGLTF("./models/town/building_home_B_blue.gltf"),
+    loadGLTF("./models/town/building_barracks_blue.gltf"),
+    loadGLTF("./models/town/building_castle_blue.gltf"),
+  ]);
+  const root = new THREE.Group();
+  const targetHeights = [3.25, 4.45, 6.2];
+  const collisionRadii = [2.6, 3.25, 5.05];
+  const levelNames = ["Ⅰ · 简易大厅", "Ⅱ · 加固市政厅", "Ⅲ · 城堡大厅"];
+  const models = assets.map((asset, index) => {
+    const model = asset.scene;
+    fitModelToHeight(model, targetHeights[index]);
+    setShadows(model);
+    model.visible = index === 0;
+    root.add(model);
+    return model;
+  });
+
+  root.position.set(0, 0, 0);
+  root.rotation.y = Math.PI;
+
+  const warmLight = new THREE.PointLight(0xffb45a, 0, 12, 2);
+  warmLight.position.set(0, 2.5, -2.8);
+  root.add(warmLight);
+  const lantern = new THREE.Mesh(
+    new THREE.SphereGeometry(0.12, 10, 8),
+    new THREE.MeshBasicMaterial({ color: 0xffc66d })
+  );
+  lantern.position.copy(warmLight.position);
+  root.add(lantern);
+
+  let level = 0;
+  const updateUI = () => {
+    townLevelLabel.textContent = levelNames[level];
+    townActionLabel.textContent = level === models.length - 1 ? "已达到最高等级" : "U · 升级";
+    townUpgradeButton.disabled = level === models.length - 1;
+  };
+  const upgrade = () => {
+    if (level >= models.length - 1) return false;
+    models[level].visible = false;
+    level += 1;
+    models[level].visible = true;
+    updateUI();
+    return true;
+  };
+  updateUI();
+  townUpgradeButton.disabled = false;
+  return {
+    root,
+    warmLight,
+    upgrade,
+    get collisionRadius() { return collisionRadii[level]; },
+    get levelName() { return levelNames[level]; },
+  };
 }
 
 function styleMonsterModel(model, night) {
@@ -394,10 +461,11 @@ function populateForest(templates) {
 
   for (let index = 0; index < 72; index += 1) {
     const angle = random() * Math.PI * 2;
-    const radius = 10 + random() * 34;
+    const radius = 18 + random() * 26;
     let x = Math.cos(angle) * radius;
     const z = Math.sin(angle) * radius;
     if (Math.abs(x) < 4.2) x += x < 0 ? -5.2 : 5.2;
+    if (z > 6 && Math.abs(x) < 11) x += x < 0 ? -11 : 11;
     placeModel(
       templates.trees[index % templates.trees.length],
       x,
@@ -411,7 +479,7 @@ function populateForest(templates) {
   for (let index = 0; index < 86; index += 1) {
     const isBush = random() > 0.36;
     const angle = random() * Math.PI * 2;
-    const radius = 7 + random() * 36;
+    const radius = 13 + random() * 30;
     let x = Math.cos(angle) * radius;
     const z = Math.sin(angle) * radius;
     if (Math.abs(x) < 3.6) x += x < 0 ? -4.6 : 4.6;
@@ -428,6 +496,7 @@ function populateForest(templates) {
 
 let knight = null;
 let monsters = [];
+let townCenter = null;
 let worldPhase = 0.5;
 let nightActive = false;
 let bannerTimer = 0;
@@ -439,6 +508,8 @@ const dayPathColor = new THREE.Color(0xb6a27c);
 const nightPathColor = new THREE.Color(0x514d57);
 const dayClearingColor = new THREE.Color(0x819e61);
 const nightClearingColor = new THREE.Color(0x304549);
+const dayTownSquareColor = new THREE.Color(0xa99a78);
+const nightTownSquareColor = new THREE.Color(0x4d4850);
 
 function showThreat(text) {
   threatBanner.textContent = text;
@@ -486,6 +557,8 @@ function updateDayNight(delta) {
   groundMaterial.color.lerpColors(dayGroundColor, nightGroundColor, nightFactor);
   pathMaterial.color.lerpColors(dayPathColor, nightPathColor, nightFactor);
   clearingMaterial.color.lerpColors(dayClearingColor, nightClearingColor, nightFactor);
+  townSquareMaterial.color.lerpColors(dayTownSquareColor, nightTownSquareColor, nightFactor);
+  if (townCenter) townCenter.warmLight.intensity = nightFactor * 4.2;
   setNightMode(nightFactor > 0.68);
 
   const totalMinutes = Math.floor(worldPhase * 24 * 60);
@@ -550,6 +623,7 @@ function updateMonster(monster, delta, time) {
       monster.direction.y = 0;
       monster.direction.normalize();
       monster.root.position.addScaledVector(monster.direction, speed * delta);
+      resolveTownCenterCollision(monster.root.position, 0.65);
     }
   }
 
@@ -564,13 +638,16 @@ function updateMonster(monster, delta, time) {
 
 async function loadWorld() {
   loadingText.textContent = "正在唤醒真正的森林";
-  const [loadedKnight, forestTemplates, monsterAssets] = await Promise.all([
+  const [loadedKnight, forestTemplates, monsterAssets, loadedTownCenter] = await Promise.all([
     createKnightRig(),
     loadForestTemplates(),
     loadMonsterAssets(),
+    createTownCenter(),
   ]);
   knight = loadedKnight;
+  townCenter = loadedTownCenter;
   scene.add(knight.root);
+  scene.add(townCenter.root);
   populateForest(forestTemplates);
   monsters = spawnMonsters(monsterAssets);
   setNightMode(nightActive, false, true);
@@ -611,11 +688,17 @@ window.addEventListener("keydown", (event) => {
     knight?.requestAttack();
     return;
   }
+  if (event.code === "KeyU") {
+    event.preventDefault();
+    upgradeTownCenter();
+    return;
+  }
   if (event.code !== "KeyN") return;
   event.preventDefault();
   toggleDayNight();
 });
 worldToggle.addEventListener("click", toggleDayNight);
+townUpgradeButton.addEventListener("click", upgradeTownCenter);
 
 renderer.domElement.addEventListener("pointerdown", (event) => {
   if (event.pointerType === "mouse" && event.button === 0) knight?.requestAttack();
@@ -653,6 +736,29 @@ const stopped = new THREE.Vector3();
 let previousTime = performance.now();
 let currentState = "idle";
 
+function resolveTownCenterCollision(position, padding = 0) {
+  if (!townCenter) return false;
+  const minimumDistance = townCenter.collisionRadius + padding;
+  const x = position.x - townCenter.root.position.x;
+  const z = position.z - townCenter.root.position.z;
+  const distance = Math.hypot(x, z);
+  if (distance >= minimumDistance) return false;
+  if (distance < 0.001) {
+    position.z = townCenter.root.position.z + minimumDistance;
+  } else {
+    const scale = minimumDistance / distance;
+    position.x = townCenter.root.position.x + x * scale;
+    position.z = townCenter.root.position.z + z * scale;
+  }
+  return true;
+}
+
+function upgradeTownCenter() {
+  if (!townCenter || !townCenter.upgrade()) return;
+  resolveTownCenterCollision(knight.root.position, 0.72);
+  velocity.multiplyScalar(0.2);
+}
+
 function showState(state) {
   if (state === currentState) return;
   currentState = state;
@@ -689,6 +795,7 @@ function tick(time) {
     knight.update(delta, currentState);
     motion.textContent = knight.isAttacking() ? "攻击" : currentState === "run" ? "奔跑" : currentState === "walk" ? "行走" : "待命";
     knight.root.position.addScaledVector(velocity, delta);
+    if (resolveTownCenterCollision(knight.root.position, 0.72)) velocity.multiplyScalar(0.2);
     const distance = Math.hypot(knight.root.position.x, knight.root.position.z);
     if (distance > 41) {
       knight.root.position.x *= 41 / distance;

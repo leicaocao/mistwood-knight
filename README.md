@@ -9,6 +9,7 @@
 - 昼夜：约 90 秒自动循环，按 N 可立即切换
 - 怪物：白天杂兵低攻击性；夜晚变为重甲战士，扩大追击范围并使用近战动画
 - 攻击：鼠标左键或 J，连续输入可衔接横斩、斜斩、重劈三段连击
+- 城镇中心：地图中心已建造三级大厅，按 U 或点击面板升级外观
 
 角色、骨骼动画、树木、灌木与岩石均使用真正的 GLB/GLTF 文件；Three.js 已打包进 `game.js`，不依赖外部 CDN。
 
@@ -18,5 +19,6 @@
 - KayKit Forest Nature Pack 1.0 — CC0
 - KayKit Skeletons Character Pack 1.1 — CC0
 - KayKit Character Animations 1.1 — CC0
+- KayKit Medieval Hexagon Pack 1.0 — CC0
 
 素材作者：Kay Lousberg（KayKit）。许可证原文保存在 `licenses/`。

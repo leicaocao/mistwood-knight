@@ -6,8 +6,8 @@
     <meta name="theme-color" content="#142b22" />
     <meta name="description" content="雾林骑士：一个可移动骑士与低多边形森林的 Three.js 测试场景。" />
     <title>雾林骑士</title>
-    <link rel="stylesheet" href="./styles.css?v=4" />
-    <script defer src="./game.js?v=7"></script>
+    <link rel="stylesheet" href="./styles.css?v=5" />
+    <script defer src="./game.js?v=8"></script>
   </head>
   <body>
     <main class="game-shell">
@@ -29,12 +29,19 @@
 
       <div id="threat-banner" class="threat-banner">夜幕降临 · 骷髅已狂暴</div>
 
+      <button id="town-upgrade" class="town-upgrade" type="button" disabled>
+        <span>城镇中心</span>
+        <strong id="town-level">建造中</strong>
+        <small id="town-action">U · 升级</small>
+      </button>
+
       <aside class="instructions">
         <p>探索林间空地</p>
         <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><span>移动</span></div>
         <div><kbd>⇧</kbd><span>按住奔跑</span></div>
         <div><kbd>N</kbd><span>切换昼夜</span></div>
         <div><kbd>J</kbd><span>攻击 / 左键</span></div>
+        <div><kbd>U</kbd><span>升级城镇中心</span></div>
       </aside>
 
       <div id="loading" class="loading" role="status">
