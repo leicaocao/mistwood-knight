@@ -275,6 +275,8 @@ const townClockMaterial = new THREE.MeshStandardMaterial({
 });
 const townFlameMaterial = new THREE.MeshBasicMaterial({ color: 0xffbc57 });
 const townWindowFrameMaterial = new THREE.MeshStandardMaterial({ color: 0x9b7c32, roughness: 0.72 });
+const townPlantMaterial = new THREE.MeshStandardMaterial({ color: 0x4f7e3b, roughness: 0.9 });
+const townSoilMaterial = new THREE.MeshStandardMaterial({ color: 0x49382b, roughness: 1 });
 const townSparkMaterial = new THREE.MeshBasicMaterial({
   color: 0xbfeaff,
   transparent: true,
@@ -439,6 +441,37 @@ function addTownEntranceDetails(group, radius, baseY, grand = false) {
     townGoldMaterial
   );
   threshold.castShadow = false;
+}
+
+function addTownPlanter(group, x, z, baseY, scale = 1) {
+  const planter = new THREE.Group();
+  planter.position.set(x, baseY, z);
+  planter.scale.setScalar(scale);
+
+  const pot = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.44, 0.54, 0.42, 10),
+    townStoneMaterial
+  );
+  pot.position.y = 0.21;
+  pot.castShadow = true;
+  pot.receiveShadow = true;
+  planter.add(pot);
+
+  const soil = new THREE.Mesh(new THREE.CylinderGeometry(0.37, 0.37, 0.06, 10), townSoilMaterial);
+  soil.position.y = 0.45;
+  planter.add(soil);
+
+  for (const [leafX, leafY, leafZ, leafScale] of [
+    [-0.18, 0.64, 0.02, 0.24],
+    [0.17, 0.7, 0.06, 0.27],
+    [0, 0.78, -0.12, 0.29],
+  ]) {
+    const leaf = new THREE.Mesh(new THREE.IcosahedronGeometry(leafScale, 0), townPlantMaterial);
+    leaf.position.set(leafX, leafY, leafZ);
+    leaf.castShadow = true;
+    planter.add(leaf);
+  }
+  group.add(planter);
 }
 
 function addTownSeal(group, radius, level) {
@@ -619,9 +652,19 @@ async function createTownCenter() {
     loadGLTF("./models/town/barrel.gltf"),
     loadGLTF("./models/town/crate_A_small.gltf"),
     loadGLTF("./models/town/wheelbarrow.gltf"),
+    loadGLTF("./models/town/building_well_blue.gltf"),
+    loadGLTF("./models/town/target.gltf"),
+    loadGLTF("./models/town/bucket_arrows.gltf"),
+    loadGLTF("./models/town/sack.gltf"),
+    loadGLTF("./models/town/resource_lumber.gltf"),
+    loadGLTF("./models/town/resource_stone.gltf"),
+    loadGLTF("./models/town/pallet.gltf"),
   ]);
-  const [barracks, castle, tavern, church, towerA, towerB, weaponRack, barrel, crate, wheelbarrow] =
-    loadedAssets.map((asset) => asset.scene);
+  const [
+    barracks, castle, tavern, church, towerA, towerB,
+    weaponRack, barrel, crate, wheelbarrow, well, target,
+    arrowBucket, sack, lumber, stonePile, pallet,
+  ] = loadedAssets.map((asset) => asset.scene);
   const root = new THREE.Group();
   const collisionRadii = [8.5, 10.6, 12.9];
   const cameraScales = [1, 1.15, 1.38];
@@ -666,6 +709,14 @@ async function createTownCenter() {
   addTownModel(keep, weaponRack, 1.65, -5.25, -6.55, 0.08, keepBaseY);
   addTownModel(keep, wheelbarrow, 1.25, 5.35, -6.45, -0.42, keepBaseY);
   addTownModel(keep, barrel, 1.05, 4.2, -6.75, 0, keepBaseY);
+  addTownModel(keep, target, 1.72, -3.85, -2.25, 0.18, keepBaseY);
+  addTownModel(keep, arrowBucket, 0.82, -2.75, -2.85, -0.08, keepBaseY);
+  addTownModel(keep, well, 1.58, 3.55, -2.15, 0, keepBaseY);
+  addTownModel(keep, sack, 0.66, 4.72, -2.65, 0.25, keepBaseY);
+  addTownModel(keep, sack, 0.58, 5.08, -2.42, -0.3, keepBaseY);
+  addTownModel(keep, lumber, 0.88, -5.65, -4.15, 0.12, keepBaseY);
+  addTownPlanter(keep, -6.25, 0.25, keepBaseY, 0.9);
+  addTownPlanter(keep, 6.25, 0.25, keepBaseY, 0.9);
   addTownBanner(keep, -3.15, -8.15, keepBaseY, 5.4);
   addTownBanner(keep, 3.15, -8.15, keepBaseY, 5.4);
   addTownEntranceDetails(keep, 10.15, keepBaseY, true);
@@ -694,6 +745,16 @@ async function createTownCenter() {
   addTownModel(castleHall, weaponRack, 1.85, 5.75, -8.55, -0.06, castleBaseY);
   addTownModel(castleHall, crate, 1.05, -4.45, -8.85, 0.25, castleBaseY);
   addTownModel(castleHall, barrel, 1.12, 4.35, -8.9, 0, castleBaseY);
+  addTownModel(castleHall, target, 2.02, -4.55, -3.1, 0.2, castleBaseY);
+  addTownModel(castleHall, arrowBucket, 0.94, -3.35, -3.9, -0.12, castleBaseY);
+  addTownModel(castleHall, well, 1.76, 4.45, -3.05, 0, castleBaseY);
+  addTownModel(castleHall, sack, 0.72, 5.65, -3.85, 0.2, castleBaseY);
+  addTownModel(castleHall, sack, 0.64, 6.08, -3.55, -0.25, castleBaseY);
+  addTownModel(castleHall, stonePile, 1.05, -5.9, -5.55, 0.15, castleBaseY);
+  addTownModel(castleHall, lumber, 1.02, 5.78, -5.65, -0.15, castleBaseY);
+  addTownModel(castleHall, pallet, 0.3, 6.7, -5.25, 0.35, castleBaseY);
+  addTownPlanter(castleHall, -7.15, -0.55, castleBaseY, 1.05);
+  addTownPlanter(castleHall, 7.15, -0.55, castleBaseY, 1.05);
   addTownBanner(castleHall, -3.55, -10.2, castleBaseY, 6.6);
   addTownBanner(castleHall, 3.55, -10.2, castleBaseY, 6.6);
   addTownEntranceDetails(castleHall, 12.35, castleBaseY, true);
