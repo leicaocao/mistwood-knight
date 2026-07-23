@@ -1,0 +1,27 @@
+Quaternius modular character assets
+
+Creator: Quaternius
+Source packs:
+- Ultimate Modular Men Pack
+  https://quaternius.com/packs/ultimatemodularcharacters.html
+- Ultimate Modular Women Pack
+  https://quaternius.com/packs/ultimatemodularwomen.html
+
+Downloaded GLB models:
+- Farmer
+- Worker (male)
+- King
+- Adventurer (male)
+- Adventurer (female)
+- Animated Woman
+
+These models are released under Creative Commons Zero (CC0 1.0):
+https://creativecommons.org/publicdomain/zero/1.0/
+
+Worker (female)
+Source: https://poly.pizza/m/E8079Ahx7k
+Creator: Quaternius
+License: Creative Commons Attribution 4.0 (CC BY 4.0)
+https://creativecommons.org/licenses/by/4.0/
+
+Only the selected browser-ready GLB files are included in this project.

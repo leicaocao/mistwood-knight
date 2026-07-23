@@ -902,25 +902,114 @@ function fitModelToHeight(model, targetHeight) {
   model.position.y -= scaledBox.min.y;
 }
 
-function createCityNpcSystem(characterTemplate, clips) {
+const cityNpcAssetUrls = {
+  farmer: "./models/npcs/farmer.glb",
+  "worker-m": "./models/npcs/worker-m.glb",
+  "worker-f": "./models/npcs/worker-f.glb",
+  king: "./models/npcs/king.glb",
+  "adventurer-m": "./models/npcs/adventurer-m.glb",
+  "adventurer-f": "./models/npcs/adventurer-f.glb",
+  "villager-f": "./models/npcs/villager-f.glb",
+};
+
+async function loadCityNpcAssets() {
+  const entries = Object.entries(cityNpcAssetUrls);
+  const loaded = await Promise.all(entries.map(([, url]) => loadGLTF(url)));
+  return Object.fromEntries(entries.map(([id], index) => [
+    id,
+    {
+      template: loaded[index].scene,
+      clips: loaded[index].animations,
+    },
+  ]));
+}
+
+function findNpcClip(clips, exactNames, containsNames = []) {
+  for (const exactName of exactNames) {
+    const lowerExactName = exactName.toLowerCase();
+    const clip = clips.find(({ name }) => {
+      const lowerName = name.toLowerCase();
+      return lowerName === lowerExactName || lowerName.endsWith(`|${lowerExactName}`);
+    });
+    if (clip) return clip;
+  }
+  return clips.find(({ name }) => {
+    const lowerName = name.toLowerCase();
+    return containsNames.some((candidate) => lowerName.includes(candidate.toLowerCase()));
+  }) || null;
+}
+
+function createCityNpcSystem(characterTemplate, clips, npcAssets) {
   const root = new THREE.Group();
   const npcsByPlot = new Map();
   const direction = new THREE.Vector3();
   const targetRotation = new THREE.Quaternion();
   const targetEuler = new THREE.Euler();
   const professionColor = new THREE.Color();
-  const idleClip = THREE.AnimationClip.findByName(clips, "Idle_A");
-  const walkClip = THREE.AnimationClip.findByName(clips, "Walking_A");
-  const workClip = THREE.AnimationClip.findByName(clips, "Melee_1H_Attack_Chop");
+  const guardAsset = {
+    template: characterTemplate,
+    clips,
+    tintStrength: 0.2,
+  };
   const roles = {
-    barracks: { color: 0x315f92, count: 2, speed: 1.55, works: true, patrolsGate: true },
-    blacksmith: { color: 0xb85d35, count: 1, speed: 1.25, works: true },
-    archery: { color: 0x4d813d, count: 1, speed: 1.45, works: true },
-    market: { color: 0xc99b37, count: 2, speed: 1.35, works: false },
-    church: { color: 0xeee0bd, count: 1, speed: 1.2, works: false },
-    home: { color: 0x8b5e9d, count: 2, speed: 1.3, works: false },
-    lumbermill: { color: 0x8b633a, count: 2, speed: 1.3, works: true },
-    tower: { color: 0x496f88, count: 1, speed: 1.5, works: true, patrolsGate: true },
+    barracks: {
+      color: 0x315f92,
+      count: 2,
+      speed: 1.55,
+      works: true,
+      patrolsGate: true,
+      models: ["guard"],
+    },
+    blacksmith: {
+      color: 0xb85d35,
+      count: 1,
+      speed: 1.25,
+      works: true,
+      models: ["worker-m", "worker-f"],
+    },
+    archery: {
+      color: 0x4d813d,
+      count: 1,
+      speed: 1.45,
+      works: true,
+      models: ["adventurer-f", "adventurer-m"],
+    },
+    market: {
+      color: 0xc99b37,
+      count: 2,
+      speed: 1.35,
+      works: false,
+      models: ["villager-f", "king"],
+    },
+    church: {
+      color: 0xeee0bd,
+      count: 1,
+      speed: 1.2,
+      works: false,
+      models: ["king", "villager-f"],
+    },
+    home: {
+      color: 0x8b5e9d,
+      count: 2,
+      speed: 1.3,
+      works: false,
+      models: ["farmer", "villager-f", "worker-f"],
+    },
+    lumbermill: {
+      color: 0x8b633a,
+      count: 2,
+      speed: 1.3,
+      works: true,
+      models: ["farmer", "worker-m", "worker-f"],
+    },
+    tower: {
+      color: 0x496f88,
+      count: 1,
+      speed: 1.5,
+      works: true,
+      patrolsGate: true,
+      models: ["guard"],
+    },
   };
 
   const createRoute = (plot, role, workerIndex) => {
@@ -978,7 +1067,9 @@ function createCityNpcSystem(characterTemplate, clips) {
   const createNpc = (plot, typeId, workerIndex) => {
     const role = roles[typeId] || roles.home;
     const npcRoot = new THREE.Group();
-    const model = cloneSkeleton(characterTemplate);
+    const assetId = role.models[(plot.index + workerIndex) % role.models.length];
+    const asset = assetId === "guard" ? guardAsset : npcAssets[assetId];
+    const model = cloneSkeleton(asset.template);
     fitModelToHeight(model, 2.12);
     setShadows(model);
 
@@ -988,7 +1079,7 @@ function createCityNpcSystem(characterTemplate, clips) {
       const materials = Array.isArray(child.material) ? child.material : [child.material];
       const tinted = materials.map((material) => {
         const clone = material.clone();
-        if (clone.color) clone.color.lerp(professionColor, 0.2);
+        if (clone.color) clone.color.lerp(professionColor, asset.tintStrength ?? 0.035);
         return clone;
       });
       child.material = Array.isArray(child.material) ? tinted : tinted[0];
@@ -1009,6 +1100,11 @@ function createCityNpcSystem(characterTemplate, clips) {
     npcRoot.add(model, badge);
 
     const mixer = new THREE.AnimationMixer(model);
+    const idleClip = findNpcClip(asset.clips, ["Idle_A", "Idle", "Idle_Neutral"], ["idle"]);
+    const walkClip = findNpcClip(asset.clips, ["Walking_A", "Walk"], ["walk"]);
+    const workClip = assetId === "guard"
+      ? findNpcClip(asset.clips, ["Melee_1H_Attack_Chop"], ["attack_chop"])
+      : findNpcClip(asset.clips, ["Interact", "Punch_Right", "Punch_Left"], ["interact", "punch"]);
     const actions = {
       idle: idleClip ? mixer.clipAction(idleClip) : null,
       walk: walkClip ? mixer.clipAction(walkClip) : null,
@@ -1026,9 +1122,11 @@ function createCityNpcSystem(characterTemplate, clips) {
     const random = seededRandom(5100 + plot.index * 97 + workerIndex * 31);
     return {
       root: npcRoot,
+      model,
       mixer,
       actions,
       activeAction: actions.idle,
+      assetId,
       route,
       role,
       random,
@@ -1043,7 +1141,7 @@ function createCityNpcSystem(characterTemplate, clips) {
     if (!npcs) return;
     for (const npc of npcs) {
       npc.mixer.stopAllAction();
-      npc.mixer.uncacheRoot(npc.root);
+      npc.mixer.uncacheRoot(npc.model);
       root.remove(npc.root);
     }
     npcsByPlot.delete(plotIndex);
@@ -2406,17 +2504,29 @@ function updateCityWallDetails(time) {
 
 async function loadWorld() {
   loadingText.textContent = "正在唤醒真正的森林";
-  const [loadedKnight, forestTemplates, loadedTownCenter, loadedBuildSystem, loadedCityDetails] = await Promise.all([
+  const [
+    loadedKnight,
+    forestTemplates,
+    loadedTownCenter,
+    loadedBuildSystem,
+    loadedCityDetails,
+    loadedCityNpcAssets,
+  ] = await Promise.all([
     createKnightRig(),
     loadForestTemplates(),
     createTownCenter(),
     createBuildSystem(),
     createCityDetails(),
+    loadCityNpcAssets(),
   ]);
   knight = loadedKnight;
   townCenter = loadedTownCenter;
   buildSystem = loadedBuildSystem;
-  cityNpcSystem = createCityNpcSystem(loadedKnight.npcTemplate, loadedKnight.npcClips);
+  cityNpcSystem = createCityNpcSystem(
+    loadedKnight.npcTemplate,
+    loadedKnight.npcClips,
+    loadedCityNpcAssets
+  );
   scene.add(knight.root);
   scene.add(townCenter.root);
   scene.add(buildSystem.root);

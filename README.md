@@ -20,5 +20,7 @@
 - KayKit Skeletons Character Pack 1.1 — CC0
 - KayKit Character Animations 1.1 — CC0
 - KayKit Medieval Hexagon Pack 1.0 — CC0
+- Quaternius Ultimate Modular Men Pack — CC0
+- Quaternius Ultimate Modular Women Pack — CC0 / CC BY（女工人）
 
-素材作者：Kay Lousberg（KayKit）。许可证原文保存在 `licenses/`。
+素材作者：Kay Lousberg（KayKit）、Quaternius。许可证与素材来源保存在 `licenses/`。
