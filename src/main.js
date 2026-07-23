@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { clone as cloneSkeleton } from "three/addons/utils/SkeletonUtils.js";
 
 const mount = document.querySelector("#scene");
 const loading = document.querySelector("#loading");
@@ -785,6 +786,7 @@ async function createKnightRig() {
 
   const root = new THREE.Group();
   const visual = new THREE.Group();
+  const npcTemplate = cloneSkeleton(character.scene);
   const model = character.scene;
   root.add(visual);
   visual.add(model);
@@ -877,7 +879,17 @@ async function createKnightRig() {
     }
   };
 
-  return { root, visual, mixer, setAnimation, requestAttack, isAttacking: () => attackTimer > 0, update };
+  return {
+    root,
+    visual,
+    mixer,
+    setAnimation,
+    requestAttack,
+    isAttacking: () => attackTimer > 0,
+    update,
+    npcTemplate,
+    npcClips: clips,
+  };
 }
 
 function fitModelToHeight(model, targetHeight) {
@@ -888,6 +900,210 @@ function fitModelToHeight(model, targetHeight) {
   model.updateMatrixWorld(true);
   const scaledBox = new THREE.Box3().setFromObject(model);
   model.position.y -= scaledBox.min.y;
+}
+
+function createCityNpcSystem(characterTemplate, clips) {
+  const root = new THREE.Group();
+  const npcsByPlot = new Map();
+  const direction = new THREE.Vector3();
+  const targetRotation = new THREE.Quaternion();
+  const targetEuler = new THREE.Euler();
+  const professionColor = new THREE.Color();
+  const idleClip = THREE.AnimationClip.findByName(clips, "Idle_A");
+  const walkClip = THREE.AnimationClip.findByName(clips, "Walking_A");
+  const workClip = THREE.AnimationClip.findByName(clips, "Melee_1H_Attack_Chop");
+  const roles = {
+    barracks: { color: 0x315f92, count: 2, speed: 1.55, works: true, patrolsGate: true },
+    blacksmith: { color: 0xb85d35, count: 1, speed: 1.25, works: true },
+    archery: { color: 0x4d813d, count: 1, speed: 1.45, works: true },
+    market: { color: 0xc99b37, count: 2, speed: 1.35, works: false },
+    church: { color: 0xeee0bd, count: 1, speed: 1.2, works: false },
+    home: { color: 0x8b5e9d, count: 2, speed: 1.3, works: false },
+    lumbermill: { color: 0x8b633a, count: 2, speed: 1.3, works: true },
+    tower: { color: 0x496f88, count: 1, speed: 1.5, works: true, patrolsGate: true },
+  };
+
+  const createRoute = (plot, role, workerIndex) => {
+    const position = plot.root.position;
+    const signX = Math.sign(position.x) || 1;
+    const signZ = Math.sign(position.z) || 1;
+    const cornerPlot = Math.abs(position.x) > 20 && Math.abs(position.z) > 20;
+    const useXAxis = cornerPlot
+      ? workerIndex % 2 === 0
+      : Math.abs(position.x) > Math.abs(position.z);
+    const inward = useXAxis
+      ? new THREE.Vector3(-signX, 0, 0)
+      : new THREE.Vector3(0, 0, -signZ);
+    const tangent = new THREE.Vector3(-inward.z, 0, inward.x);
+    const laneOffset = (workerIndex - (role.count - 1) / 2) * 0.72;
+    const offset = tangent.clone().multiplyScalar(laneOffset);
+    const workSpot = position.clone()
+      .addScaledVector(inward, plot.collisionRadius + 1.05)
+      .add(offset);
+    const streetEntry = useXAxis
+      ? new THREE.Vector3(signX * 19.4, 0, position.z)
+      : new THREE.Vector3(position.x, 0, signZ * 19.4);
+    const streetHub = useXAxis
+      ? new THREE.Vector3(signX * 19.4, 0, 0)
+      : new THREE.Vector3(0, 0, signZ * 19.4);
+    streetEntry.add(offset);
+    streetHub.add(offset);
+
+    const destination = role.patrolsGate
+      ? (useXAxis
+        ? new THREE.Vector3(signX * 30.2, 0, laneOffset)
+        : new THREE.Vector3(laneOffset, 0, signZ * 30.2))
+      : (useXAxis
+        ? new THREE.Vector3(signX * 10.4, 0, laneOffset)
+        : new THREE.Vector3(laneOffset, 0, signZ * 10.4));
+
+    return [
+      workSpot,
+      streetEntry,
+      streetHub,
+      destination,
+      streetHub.clone(),
+      streetEntry.clone(),
+    ];
+  };
+
+  const setNpcAction = (npc, state) => {
+    const nextAction = npc.actions[state] || npc.actions.idle;
+    if (!nextAction || nextAction === npc.activeAction) return;
+    nextAction.reset().fadeIn(0.18).play();
+    npc.activeAction?.fadeOut(0.18);
+    npc.activeAction = nextAction;
+  };
+
+  const createNpc = (plot, typeId, workerIndex) => {
+    const role = roles[typeId] || roles.home;
+    const npcRoot = new THREE.Group();
+    const model = cloneSkeleton(characterTemplate);
+    fitModelToHeight(model, 2.12);
+    setShadows(model);
+
+    professionColor.setHex(role.color);
+    model.traverse((child) => {
+      if (!child.isMesh || !child.material) return;
+      const materials = Array.isArray(child.material) ? child.material : [child.material];
+      const tinted = materials.map((material) => {
+        const clone = material.clone();
+        if (clone.color) clone.color.lerp(professionColor, 0.2);
+        return clone;
+      });
+      child.material = Array.isArray(child.material) ? tinted : tinted[0];
+    });
+
+    const badge = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.13, 0.13, 0.045, 12),
+      new THREE.MeshStandardMaterial({
+        color: role.color,
+        emissive: role.color,
+        emissiveIntensity: 0.2,
+        roughness: 0.7,
+      })
+    );
+    badge.rotation.x = Math.PI / 2;
+    badge.position.set(0, 1.4, 0.3);
+    badge.castShadow = true;
+    npcRoot.add(model, badge);
+
+    const mixer = new THREE.AnimationMixer(model);
+    const actions = {
+      idle: idleClip ? mixer.clipAction(idleClip) : null,
+      walk: walkClip ? mixer.clipAction(walkClip) : null,
+      work: role.works && workClip ? mixer.clipAction(workClip) : null,
+    };
+    actions.idle?.play();
+    if (actions.work) {
+      actions.work.setLoop(THREE.LoopRepeat, Infinity);
+      actions.work.setEffectiveTimeScale(0.72 + workerIndex * 0.06);
+    }
+
+    const route = createRoute(plot, role, workerIndex);
+    npcRoot.position.copy(route[0]);
+    root.add(npcRoot);
+    const random = seededRandom(5100 + plot.index * 97 + workerIndex * 31);
+    return {
+      root: npcRoot,
+      mixer,
+      actions,
+      activeAction: actions.idle,
+      route,
+      role,
+      random,
+      currentPoint: 0,
+      targetPoint: 1,
+      waitTimer: 0.7 + random() * 2.4,
+    };
+  };
+
+  const removePlot = (plotIndex) => {
+    const npcs = npcsByPlot.get(plotIndex);
+    if (!npcs) return;
+    for (const npc of npcs) {
+      npc.mixer.stopAllAction();
+      npc.mixer.uncacheRoot(npc.root);
+      root.remove(npc.root);
+    }
+    npcsByPlot.delete(plotIndex);
+  };
+
+  const spawnForPlot = (plot) => {
+    if (!plot?.builtType) return;
+    removePlot(plot.index);
+    const role = roles[plot.builtType] || roles.home;
+    const npcs = [];
+    for (let index = 0; index < role.count; index += 1) {
+      npcs.push(createNpc(plot, plot.builtType, index));
+    }
+    npcsByPlot.set(plot.index, npcs);
+    plot.npcSpawned = true;
+  };
+
+  const sync = (plots) => {
+    for (const plot of plots) {
+      if (plot.builtType && plot.buildProgress >= 1) spawnForPlot(plot);
+    }
+  };
+
+  const update = (delta) => {
+    for (const npcs of npcsByPlot.values()) {
+      for (const npc of npcs) {
+        npc.mixer.update(delta);
+        if (npc.waitTimer > 0) {
+          npc.waitTimer -= delta;
+          if (npc.waitTimer <= 0) {
+            npc.targetPoint = (npc.currentPoint + 1) % npc.route.length;
+            setNpcAction(npc, "walk");
+          }
+          continue;
+        }
+
+        const target = npc.route[npc.targetPoint];
+        direction.subVectors(target, npc.root.position);
+        const distance = direction.length();
+        if (distance < 0.16) {
+          npc.root.position.copy(target);
+          npc.currentPoint = npc.targetPoint;
+          const working = npc.currentPoint === 0 && npc.role.works;
+          npc.waitTimer = working
+            ? 3.2 + npc.random() * 3.1
+            : 0.65 + npc.random() * 1.65;
+          setNpcAction(npc, working ? "work" : "idle");
+          continue;
+        }
+
+        direction.multiplyScalar(1 / distance);
+        npc.root.position.addScaledVector(direction, Math.min(distance, npc.role.speed * delta));
+        targetEuler.set(0, Math.atan2(direction.x, direction.z), 0);
+        targetRotation.setFromEuler(targetEuler);
+        npc.root.quaternion.slerp(targetRotation, 1 - Math.exp(-delta * 10));
+      }
+    }
+  };
+
+  return { root, spawnForPlot, removePlot, sync, update };
 }
 
 const townStoneMaterial = new THREE.MeshStandardMaterial({ color: 0x77766f, roughness: 0.92 });
@@ -1654,6 +1870,7 @@ async function createBuildSystem() {
       builtType: null,
       collisionRadius: 0,
       buildProgress: 1,
+      npcSpawned: false,
     });
   }
 
@@ -1700,6 +1917,7 @@ async function createBuildSystem() {
     plot.buildProgress = animate ? 0 : 1;
     plot.builtType = typeId;
     plot.collisionRadius = definition.radius;
+    plot.npcSpawned = false;
     plot.marker.visible = false;
     plot.foundation.material.color.setHex(0x858077);
     plot.ringMaterial.color.setHex(0xd3b65c);
@@ -1719,9 +1937,11 @@ async function createBuildSystem() {
   const demolish = () => {
     if (!activePlot?.builtType) return false;
     const removedName = definitions.get(activePlot.builtType)?.label ?? "建筑";
+    cityNpcSystem?.removePlot(activePlot.index);
     activePlot.buildingGroup.clear();
     activePlot.builtType = null;
     activePlot.collisionRadius = 0;
+    activePlot.npcSpawned = false;
     activePlot.marker.visible = true;
     activePlot.foundation.material.color.setHex(0x718b83);
     activePlot.ringMaterial.color.setHex(0x6ec5e2);
@@ -1749,6 +1969,9 @@ async function createBuildSystem() {
         plot.buildProgress = Math.min(plot.buildProgress + delta * 0.9, 1);
         const ease = 1 - Math.pow(1 - plot.buildProgress, 3);
         plot.buildingGroup.scale.setScalar(0.72 + ease * 0.28 + Math.sin(plot.buildProgress * Math.PI) * 0.035);
+        if (plot.buildProgress >= 1 && !plot.npcSpawned) {
+          cityNpcSystem?.spawnForPlot(plot);
+        }
       }
     }
     if (nearest && nearest !== activePlot) {
@@ -2071,6 +2294,7 @@ function populateForest(templates) {
 let knight = null;
 let townCenter = null;
 let buildSystem = null;
+let cityNpcSystem = null;
 let worldPhase = 0.5;
 let nightActive = false;
 let bannerTimer = 0;
@@ -2192,10 +2416,13 @@ async function loadWorld() {
   knight = loadedKnight;
   townCenter = loadedTownCenter;
   buildSystem = loadedBuildSystem;
+  cityNpcSystem = createCityNpcSystem(loadedKnight.npcTemplate, loadedKnight.npcClips);
   scene.add(knight.root);
   scene.add(townCenter.root);
   scene.add(buildSystem.root);
+  scene.add(cityNpcSystem.root);
   scene.add(loadedCityDetails);
+  cityNpcSystem.sync(buildSystem.plots);
   populateForest(forestTemplates);
   setNightMode(nightActive, false, true);
   loadingProgress.style.width = "100%";
@@ -2389,6 +2616,7 @@ function tick(time) {
   updateDayNight(delta);
   updateCityWallDetails(time);
   townCenter?.update(delta, time);
+  cityNpcSystem?.update(delta);
 
   if (knight) {
     const forwardInput = (keys.forward ? 1 : 0) - (keys.back ? 1 : 0);
