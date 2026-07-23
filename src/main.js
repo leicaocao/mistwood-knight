@@ -138,12 +138,52 @@ function addPlazaStoneRing(radius, count, width) {
 addPlazaStoneRing(13.85, 44, 1.48);
 addPlazaStoneRing(15.45, 52, 1.34);
 
-const buildPlotPositions = Array.from({ length: 8 }, (_, index) => {
-  const angle = Math.PI / 8 + index * Math.PI / 4;
-  return new THREE.Vector3(Math.cos(angle) * 32, 0, Math.sin(angle) * 32);
-});
+const buildPlotPositions = [
+  new THREE.Vector3(-10, 0, -24),
+  new THREE.Vector3(10, 0, -24),
+  new THREE.Vector3(24, 0, -10),
+  new THREE.Vector3(24, 0, 10),
+  new THREE.Vector3(10, 0, 24),
+  new THREE.Vector3(-10, 0, 24),
+  new THREE.Vector3(-24, 0, 10),
+  new THREE.Vector3(-24, 0, -10),
+];
 const isInsideBuildPlotClearing = (x, z) =>
   buildPlotPositions.some((position) => Math.hypot(x - position.x, z - position.z) < 7.2);
+const isInsideCityStreet = (x, z) =>
+  (Math.abs(Math.abs(x) - 19.4) < 3.25 && Math.abs(z) < 27) ||
+  (Math.abs(Math.abs(z) - 19.4) < 3.25 && Math.abs(x) < 27);
+
+const cityStreetMaterial = new THREE.MeshStandardMaterial({ color: 0x9c9077, roughness: 0.98 });
+const cityCurbMaterial = new THREE.MeshStandardMaterial({ color: 0x6e6b62, roughness: 0.96 });
+const cityStreetGroup = new THREE.Group();
+
+for (const z of [-19.4, 19.4]) {
+  const street = new THREE.Mesh(new THREE.BoxGeometry(52, 0.055, 5.35), cityStreetMaterial);
+  street.position.set(0, 0.062, z);
+  street.receiveShadow = true;
+  cityStreetGroup.add(street);
+  for (const edgeOffset of [-2.67, 2.67]) {
+    const curb = new THREE.Mesh(new THREE.BoxGeometry(52, 0.1, 0.18), cityCurbMaterial);
+    curb.position.set(0, 0.105, z + edgeOffset);
+    curb.receiveShadow = true;
+    cityStreetGroup.add(curb);
+  }
+}
+
+for (const x of [-19.4, 19.4]) {
+  const street = new THREE.Mesh(new THREE.BoxGeometry(5.35, 0.055, 52), cityStreetMaterial);
+  street.position.set(x, 0.062, 0);
+  street.receiveShadow = true;
+  cityStreetGroup.add(street);
+  for (const edgeOffset of [-2.67, 2.67]) {
+    const curb = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.1, 52), cityCurbMaterial);
+    curb.position.set(x + edgeOffset, 0.105, 0);
+    curb.receiveShadow = true;
+    cityStreetGroup.add(curb);
+  }
+}
+scene.add(cityStreetGroup);
 
 const manager = new THREE.LoadingManager();
 manager.onProgress = (_url, loaded, total) => {
@@ -968,27 +1008,48 @@ async function createBuildSystem() {
     const plotRoot = new THREE.Group();
     plotRoot.position.copy(buildPlotPositions[index]);
 
-    const foundation = new THREE.Mesh(new THREE.CylinderGeometry(4.35, 4.35, 0.12, 40), plotFloorMaterial.clone());
+    const foundation = new THREE.Mesh(new THREE.BoxGeometry(8.4, 0.12, 8.4), plotFloorMaterial.clone());
     foundation.position.y = 0.06;
     foundation.receiveShadow = true;
     foundation.userData.buildPlotIndex = index;
     plotRoot.add(foundation);
     plotSurfaces.push(foundation);
 
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(4.16, 0.13, 8, 48), plotRingMaterial.clone());
-    ring.rotation.x = Math.PI / 2;
-    ring.position.y = 0.16;
-    ring.castShadow = true;
+    const ring = new THREE.Group();
+    const ringMaterial = plotRingMaterial.clone();
+    for (const border of [
+      { width: 8.35, depth: 0.18, x: 0, z: -4.08 },
+      { width: 8.35, depth: 0.18, x: 0, z: 4.08 },
+      { width: 0.18, depth: 8.35, x: -4.08, z: 0 },
+      { width: 0.18, depth: 8.35, x: 4.08, z: 0 },
+    ]) {
+      const edge = new THREE.Mesh(new THREE.BoxGeometry(border.width, 0.16, border.depth), ringMaterial);
+      edge.position.set(border.x, 0.16, border.z);
+      edge.castShadow = true;
+      ring.add(edge);
+    }
     plotRoot.add(ring);
 
-    for (let stoneIndex = 0; stoneIndex < 12; stoneIndex += 1) {
-      const angle = (stoneIndex / 12) * Math.PI * 2;
-      const stone = new THREE.Mesh(new THREE.BoxGeometry(0.78, 0.18, 0.44), plotStoneMaterial);
-      stone.position.set(Math.cos(angle) * 3.72, 0.14, Math.sin(angle) * 3.72);
-      stone.rotation.y = -angle;
-      stone.castShadow = true;
-      stone.receiveShadow = true;
-      plotRoot.add(stone);
+    for (const edge of [-1, 1]) {
+      for (const offset of [-2.75, -0.92, 0.92, 2.75]) {
+        const horizontalStone = new THREE.Mesh(
+          new THREE.BoxGeometry(1.48, 0.18, 0.48),
+          plotStoneMaterial
+        );
+        horizontalStone.position.set(offset, 0.14, edge * 3.72);
+        horizontalStone.castShadow = true;
+        horizontalStone.receiveShadow = true;
+        plotRoot.add(horizontalStone);
+
+        const verticalStone = new THREE.Mesh(
+          new THREE.BoxGeometry(0.48, 0.18, 1.48),
+          plotStoneMaterial
+        );
+        verticalStone.position.set(edge * 3.72, 0.14, offset);
+        verticalStone.castShadow = true;
+        verticalStone.receiveShadow = true;
+        plotRoot.add(verticalStone);
+      }
     }
 
     const marker = new THREE.Group();
@@ -1011,6 +1072,7 @@ async function createBuildSystem() {
       root: plotRoot,
       foundation,
       ring,
+      ringMaterial,
       marker,
       beacon,
       buildingGroup,
@@ -1052,7 +1114,7 @@ async function createBuildSystem() {
     if (!plot || !definition || plot.builtType) return false;
     const model = definition.template.clone(true);
     fitModelToHeight(model, definition.height);
-    model.rotation.y = Math.atan2(plot.root.position.x, plot.root.position.z) + Math.PI;
+    model.rotation.y = Math.atan2(plot.root.position.x, plot.root.position.z);
     model.position.y += 0.14;
     setShadows(model);
     plot.buildingGroup.add(model);
@@ -1062,7 +1124,7 @@ async function createBuildSystem() {
     plot.collisionRadius = definition.radius;
     plot.marker.visible = false;
     plot.foundation.material.color.setHex(0x858077);
-    plot.ring.material.color.setHex(0xd3b65c);
+    plot.ringMaterial.color.setHex(0xd3b65c);
     if (animate) showThreat(`${definition.label} · 建造完成`);
     if (shouldPersist) persist();
     if (plot === activePlot) refreshPanel();
@@ -1084,7 +1146,7 @@ async function createBuildSystem() {
     activePlot.collisionRadius = 0;
     activePlot.marker.visible = true;
     activePlot.foundation.material.color.setHex(0x718b83);
-    activePlot.ring.material.color.setHex(0x6ec5e2);
+    activePlot.ringMaterial.color.setHex(0x6ec5e2);
     persist();
     refreshPanel();
     showThreat(`${removedName} · 已拆除`);
@@ -1103,7 +1165,7 @@ async function createBuildSystem() {
       if (!plot.builtType) {
         plot.beacon.position.y = 1.05 + Math.sin(time * 0.0022 + plot.index) * 0.18;
         plot.beacon.rotation.y = time * 0.001 + plot.index;
-        plot.ring.material.emissiveIntensity = 0.35 + Math.sin(time * 0.002 + plot.index) * 0.14;
+        plot.ringMaterial.emissiveIntensity = 0.35 + Math.sin(time * 0.002 + plot.index) * 0.14;
       }
       if (plot.buildProgress < 1) {
         plot.buildProgress = Math.min(plot.buildProgress + delta * 0.9, 1);
@@ -1219,7 +1281,7 @@ function populateForest(templates) {
     const z = Math.sin(angle) * radius;
     if (Math.abs(x) < 5.2) x += x < 0 ? -7.2 : 7.2;
     if (z > 6 && Math.abs(x) < 12) x += x < 0 ? -12 : 12;
-    if (isInsideBuildPlotClearing(x, z)) continue;
+    if (isInsideBuildPlotClearing(x, z) || isInsideCityStreet(x, z)) continue;
     placeModel(
       templates.trees[index % templates.trees.length],
       x,
@@ -1237,7 +1299,7 @@ function populateForest(templates) {
     let x = Math.cos(angle) * radius;
     const z = Math.sin(angle) * radius;
     if (Math.abs(x) < 4.8) x += x < 0 ? -6.2 : 6.2;
-    if (isInsideBuildPlotClearing(x, z)) continue;
+    if (isInsideBuildPlotClearing(x, z) || isInsideCityStreet(x, z)) continue;
     placeModel(
       isBush ? templates.bush : templates.rock,
       x,
@@ -1265,6 +1327,10 @@ const dayClearingColor = new THREE.Color(0x819e61);
 const nightClearingColor = new THREE.Color(0x304549);
 const dayTownSquareColor = new THREE.Color(0xa99a78);
 const nightTownSquareColor = new THREE.Color(0x4d4850);
+const dayCityStreetColor = new THREE.Color(0x9c9077);
+const nightCityStreetColor = new THREE.Color(0x45454b);
+const dayCityCurbColor = new THREE.Color(0x6e6b62);
+const nightCityCurbColor = new THREE.Color(0x34383c);
 
 function showThreat(text) {
   threatBanner.textContent = text;
@@ -1306,6 +1372,8 @@ function updateDayNight(delta) {
   pathMaterial.color.lerpColors(dayPathColor, nightPathColor, nightFactor);
   clearingMaterial.color.lerpColors(dayClearingColor, nightClearingColor, nightFactor);
   townSquareMaterial.color.lerpColors(dayTownSquareColor, nightTownSquareColor, nightFactor);
+  cityStreetMaterial.color.lerpColors(dayCityStreetColor, nightCityStreetColor, nightFactor);
+  cityCurbMaterial.color.lerpColors(dayCityCurbColor, nightCityCurbColor, nightFactor);
   if (townCenter) {
     townCenter.warmLight.intensity = nightFactor * 25;
     townCenter.setNightFactor(nightFactor);
