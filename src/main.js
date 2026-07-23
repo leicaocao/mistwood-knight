@@ -147,10 +147,10 @@ const buildPlotPositions = [
   new THREE.Vector3(-10, 0, 26.6),
   new THREE.Vector3(-26.6, 0, 10),
   new THREE.Vector3(-26.6, 0, -10),
-  new THREE.Vector3(-30, 0, -30),
-  new THREE.Vector3(30, 0, -30),
-  new THREE.Vector3(30, 0, 30),
-  new THREE.Vector3(-30, 0, 30),
+  new THREE.Vector3(-26.6, 0, -26.6),
+  new THREE.Vector3(26.6, 0, -26.6),
+  new THREE.Vector3(26.6, 0, 26.6),
+  new THREE.Vector3(-26.6, 0, 26.6),
 ];
 const isInsideBuildPlotClearing = (x, z) =>
   buildPlotPositions.some((position) => Math.hypot(x - position.x, z - position.z) < 7.2);
@@ -1584,7 +1584,10 @@ async function createBuildSystem() {
     if (!plot || !definition || plot.builtType) return false;
     const model = definition.template.clone(true);
     fitModelToHeight(model, definition.height);
-    model.rotation.y = Math.atan2(plot.root.position.x, plot.root.position.z);
+    const isCornerPlot = Math.abs(plot.root.position.x) > 20 && Math.abs(plot.root.position.z) > 20;
+    model.rotation.y = isCornerPlot
+      ? (plot.root.position.z < 0 ? Math.PI : 0)
+      : Math.atan2(plot.root.position.x, plot.root.position.z);
     model.position.y += 0.14;
     setShadows(model);
     plot.buildingGroup.add(model);
@@ -1748,36 +1751,36 @@ async function createCityDetails() {
   };
 
   // Northwest storage yard.
-  placeProp("pallet", -21.3, -31.1, 0.32, 0.18);
-  placeProp("crate", -21.1, -30.9, 1.05, -0.12);
-  placeProp("crate", -19.8, -31.6, 0.88, 0.2);
-  placeProp("barrel", -22.2, -29.3, 1.15, 0.08);
-  placeProp("barrel", -21.0, -29.1, 1.08, -0.14);
-  placeProp("sack", -19.1, -30.5, 0.72, -0.4);
-  placeProp("sack", -18.5, -31.0, 0.66, 0.35);
+  placeProp("pallet", -18.9, -32.8, 0.32, 0.18);
+  placeProp("crate", -18.7, -32.6, 1.05, -0.12);
+  placeProp("crate", -17.4, -33.3, 0.88, 0.2);
+  placeProp("barrel", -20.0, -31.4, 1.15, 0.08);
+  placeProp("barrel", -18.8, -31.2, 1.08, -0.14);
+  placeProp("sack", -16.8, -32.2, 0.72, -0.4);
+  placeProp("sack", -16.4, -33.0, 0.66, 0.35);
 
   // Northeast guard training yard.
-  placeProp("target", 20.3, -31.5, 2.3, -0.55);
-  placeProp("target", 18.2, -30.6, 2.05, -0.18);
-  placeProp("weaponrack", 22.1, -28.8, 2.15, -Math.PI / 2);
-  placeProp("arrows", 20.15, -28.9, 1.0, 0.25);
-  placeProp("barrel", 22.25, -31.1, 1.05, 0.12);
-  placeProp("crate", 18.0, -28.85, 0.88, -0.2);
+  placeProp("target", 18.8, -33.1, 2.3, -0.55);
+  placeProp("target", 16.8, -32.3, 2.05, -0.18);
+  placeProp("weaponrack", 20.0, -31.3, 2.15, -Math.PI / 2);
+  placeProp("arrows", 18.2, -31.5, 1.0, 0.25);
+  placeProp("barrel", 20.1, -33.4, 1.05, 0.12);
+  placeProp("crate", 16.5, -31.3, 0.88, -0.2);
 
   // Southeast builders' yard.
-  placeProp("lumber", 20.1, 31.0, 1.45, 0.1);
-  placeProp("lumber", 18.1, 29.7, 1.2, -0.24);
-  placeProp("stone", 22.0, 29.0, 1.2, 0.3);
-  placeProp("wheelbarrow", 17.9, 32.0, 1.35, Math.PI * 0.7);
-  placeProp("barrel", 22.2, 31.55, 1.05, -0.1);
-  placeProp("sack", 20.4, 28.7, 0.7, 0.2);
+  placeProp("lumber", 18.7, 33.0, 1.45, 0.1);
+  placeProp("lumber", 16.7, 31.8, 1.2, -0.24);
+  placeProp("stone", 20.0, 31.2, 1.2, 0.3);
+  placeProp("wheelbarrow", 16.6, 33.6, 1.35, Math.PI * 0.7);
+  placeProp("barrel", 20.1, 33.5, 1.05, -0.1);
+  placeProp("sack", 18.5, 31.2, 0.7, 0.2);
 
   // Southwest communal corner.
-  placeProp("well", -20.2, 30.1, 3.55, Math.PI / 4);
-  placeProp("barrel", -22.45, 31.6, 1.08, -0.18);
-  placeProp("crate", -21.8, 28.55, 0.92, 0.12);
-  placeProp("sack", -18.0, 29.15, 0.7, -0.4);
-  placeProp("wheelbarrow", -17.7, 32.0, 1.25, -Math.PI * 0.7);
+  placeProp("well", -18.5, 32.5, 3.55, Math.PI / 4);
+  placeProp("barrel", -20.2, 33.6, 1.08, -0.18);
+  placeProp("crate", -20.0, 31.2, 0.92, 0.12);
+  placeProp("sack", -16.7, 31.5, 0.7, -0.4);
+  placeProp("wheelbarrow", -16.5, 33.6, 1.25, -Math.PI * 0.7);
 
   const benchMaterial = cityGateWoodMaterial;
   const benchMetalMaterial = cityWallTrimMaterial;
