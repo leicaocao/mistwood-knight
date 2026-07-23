@@ -139,14 +139,14 @@ addPlazaStoneRing(13.85, 44, 1.48);
 addPlazaStoneRing(15.45, 52, 1.34);
 
 const buildPlotPositions = [
-  new THREE.Vector3(-10, 0, -24),
-  new THREE.Vector3(10, 0, -24),
-  new THREE.Vector3(24, 0, -10),
-  new THREE.Vector3(24, 0, 10),
-  new THREE.Vector3(10, 0, 24),
-  new THREE.Vector3(-10, 0, 24),
-  new THREE.Vector3(-24, 0, 10),
-  new THREE.Vector3(-24, 0, -10),
+  new THREE.Vector3(-10, 0, -26.6),
+  new THREE.Vector3(10, 0, -26.6),
+  new THREE.Vector3(26.6, 0, -10),
+  new THREE.Vector3(26.6, 0, 10),
+  new THREE.Vector3(10, 0, 26.6),
+  new THREE.Vector3(-10, 0, 26.6),
+  new THREE.Vector3(-26.6, 0, 10),
+  new THREE.Vector3(-26.6, 0, -10),
 ];
 const isInsideBuildPlotClearing = (x, z) =>
   buildPlotPositions.some((position) => Math.hypot(x - position.x, z - position.z) < 7.2);
@@ -156,7 +156,23 @@ const isInsideCityStreet = (x, z) =>
 
 const cityStreetMaterial = new THREE.MeshStandardMaterial({ color: 0x9c9077, roughness: 0.98 });
 const cityCurbMaterial = new THREE.MeshStandardMaterial({ color: 0x6e6b62, roughness: 0.96 });
+const cityPaverMaterial = new THREE.MeshStandardMaterial({ color: 0xb7ab92, roughness: 1 });
+const cityLampIronMaterial = new THREE.MeshStandardMaterial({
+  color: 0x292d2f,
+  roughness: 0.68,
+  metalness: 0.72,
+});
+const cityLampStoneMaterial = new THREE.MeshStandardMaterial({ color: 0x68655d, roughness: 0.96 });
+const cityLampGlassMaterial = new THREE.MeshStandardMaterial({
+  color: 0xffc66d,
+  emissive: 0xff8a2a,
+  emissiveIntensity: 0.18,
+  transparent: true,
+  opacity: 0.88,
+  roughness: 0.28,
+});
 const cityStreetGroup = new THREE.Group();
+const cityStreetLights = [];
 
 for (const z of [-19.4, 19.4]) {
   const street = new THREE.Mesh(new THREE.BoxGeometry(52, 0.055, 5.35), cityStreetMaterial);
@@ -182,6 +198,124 @@ for (const x of [-19.4, 19.4]) {
     curb.receiveShadow = true;
     cityStreetGroup.add(curb);
   }
+}
+
+const cityPaverTransforms = [];
+for (const z of [-19.4, 19.4]) {
+  for (let row = -1; row <= 1; row += 1) {
+    const stagger = row === 0 ? 0.8 : 0;
+    for (let x = -24.5 + stagger; x <= 24.5; x += 1.62) {
+      cityPaverTransforms.push({ x, z: z + row * 1.62, rotation: 0 });
+    }
+  }
+}
+for (const x of [-19.4, 19.4]) {
+  for (let row = -1; row <= 1; row += 1) {
+    const stagger = row === 0 ? 0.8 : 0;
+    for (let z = -24.5 + stagger; z <= 24.5; z += 1.62) {
+      if (Math.abs(Math.abs(z) - 19.4) < 3.15) continue;
+      cityPaverTransforms.push({ x: x + row * 1.62, z, rotation: Math.PI / 2 });
+    }
+  }
+}
+
+const cityPavers = new THREE.InstancedMesh(
+  new THREE.BoxGeometry(1.48, 0.045, 1.42),
+  cityPaverMaterial,
+  cityPaverTransforms.length
+);
+const paverDummy = new THREE.Object3D();
+const paverTint = new THREE.Color();
+cityPaverTransforms.forEach((transform, index) => {
+  const offset = Math.sin((index + 1) * 91.17);
+  paverDummy.position.set(transform.x + offset * 0.035, 0.112 + offset * 0.003, transform.z);
+  paverDummy.rotation.set(0, transform.rotation + offset * 0.018, 0);
+  paverDummy.updateMatrix();
+  cityPavers.setMatrixAt(index, paverDummy.matrix);
+  const tint = 0.91 + ((index * 17) % 7) * 0.012;
+  cityPavers.setColorAt(index, paverTint.setRGB(tint, tint, tint));
+});
+cityPavers.receiveShadow = true;
+cityPavers.instanceMatrix.needsUpdate = true;
+if (cityPavers.instanceColor) cityPavers.instanceColor.needsUpdate = true;
+cityStreetGroup.add(cityPavers);
+
+function addCityStreetLamp(x, z) {
+  const lamp = new THREE.Group();
+  lamp.position.set(x, 0, z);
+
+  const base = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.25, 0.34, 0.24, 8),
+    cityLampStoneMaterial
+  );
+  base.position.y = 0.12;
+  base.castShadow = true;
+  base.receiveShadow = true;
+  lamp.add(base);
+
+  const foot = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.14, 0.21, 0.28, 8),
+    cityLampIronMaterial
+  );
+  foot.position.y = 0.36;
+  foot.castShadow = true;
+  lamp.add(foot);
+
+  const post = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.065, 0.09, 2.05, 8),
+    cityLampIronMaterial
+  );
+  post.position.y = 1.48;
+  post.castShadow = true;
+  lamp.add(post);
+
+  const collar = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.15, 0.1, 0.14, 8),
+    cityLampIronMaterial
+  );
+  collar.position.y = 2.5;
+  collar.castShadow = true;
+  lamp.add(collar);
+
+  const glass = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.42, 0.3), cityLampGlassMaterial);
+  glass.position.y = 2.72;
+  glass.castShadow = true;
+  lamp.add(glass);
+
+  for (const xOffset of [-0.19, 0.19]) {
+    for (const zOffset of [-0.19, 0.19]) {
+      const frame = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.5, 0.045), cityLampIronMaterial);
+      frame.position.set(xOffset, 2.72, zOffset);
+      frame.castShadow = true;
+      lamp.add(frame);
+    }
+  }
+
+  for (const y of [2.47, 2.97]) {
+    const framePlate = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.065, 0.48), cityLampIronMaterial);
+    framePlate.position.y = y;
+    framePlate.castShadow = true;
+    lamp.add(framePlate);
+  }
+
+  const cap = new THREE.Mesh(new THREE.ConeGeometry(0.38, 0.28, 4), cityLampIronMaterial);
+  cap.position.y = 3.14;
+  cap.rotation.y = Math.PI / 4;
+  cap.castShadow = true;
+  lamp.add(cap);
+
+  const light = new THREE.PointLight(0xffa340, 0.1, 9, 2);
+  light.position.y = 2.73;
+  lamp.add(light);
+  cityStreetLights.push(light);
+  cityStreetGroup.add(lamp);
+}
+
+for (const position of [-17, 0, 17]) {
+  addCityStreetLamp(position, -22.48);
+  addCityStreetLamp(position, 22.48);
+  addCityStreetLamp(-22.48, position);
+  addCityStreetLamp(22.48, position);
 }
 scene.add(cityStreetGroup);
 
@@ -1331,6 +1465,8 @@ const dayCityStreetColor = new THREE.Color(0x9c9077);
 const nightCityStreetColor = new THREE.Color(0x45454b);
 const dayCityCurbColor = new THREE.Color(0x6e6b62);
 const nightCityCurbColor = new THREE.Color(0x34383c);
+const dayCityPaverColor = new THREE.Color(0xb7ab92);
+const nightCityPaverColor = new THREE.Color(0x555159);
 
 function showThreat(text) {
   threatBanner.textContent = text;
@@ -1374,6 +1510,9 @@ function updateDayNight(delta) {
   townSquareMaterial.color.lerpColors(dayTownSquareColor, nightTownSquareColor, nightFactor);
   cityStreetMaterial.color.lerpColors(dayCityStreetColor, nightCityStreetColor, nightFactor);
   cityCurbMaterial.color.lerpColors(dayCityCurbColor, nightCityCurbColor, nightFactor);
+  cityPaverMaterial.color.lerpColors(dayCityPaverColor, nightCityPaverColor, nightFactor);
+  cityLampGlassMaterial.emissiveIntensity = 0.18 + nightFactor * 4.5;
+  for (const light of cityStreetLights) light.intensity = 0.1 + nightFactor * 7.5;
   if (townCenter) {
     townCenter.warmLight.intensity = nightFactor * 25;
     townCenter.setNightFactor(nightFactor);
