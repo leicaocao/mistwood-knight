@@ -364,7 +364,17 @@ const cityWallRoofMaterial = new THREE.MeshStandardMaterial({
   metalness: 0.12,
 });
 const cityGateWoodMaterial = new THREE.MeshStandardMaterial({ color: 0x55402f, roughness: 0.9 });
+const cityWallMortarMaterial = new THREE.MeshStandardMaterial({ color: 0x55534f, roughness: 1 });
+const cityWallWalkMaterial = new THREE.MeshStandardMaterial({ color: 0x746e63, roughness: 0.98 });
+const cityWallFlagMaterial = new THREE.MeshStandardMaterial({
+  color: 0x2f69a1,
+  roughness: 0.78,
+  side: THREE.DoubleSide,
+});
+const cityWallGoldMaterial = new THREE.MeshStandardMaterial({ color: 0xc49c3f, roughness: 0.68 });
 const cityWallGroup = new THREE.Group();
+const cityWallFlags = [];
+const cityGateLights = [];
 
 function addCityWallSegment(x, z, width, depth) {
   const segment = new THREE.Group();
@@ -388,6 +398,62 @@ function addCityWallSegment(x, z, width, depth) {
 
   const horizontal = width > depth;
   const length = horizontal ? width : depth;
+  const wallWalk = new THREE.Mesh(
+    new THREE.BoxGeometry(
+      horizontal ? width - 0.25 : width + 0.78,
+      0.14,
+      horizontal ? depth + 0.78 : depth - 0.25
+    ),
+    cityWallWalkMaterial
+  );
+  wallWalk.position.y = 3.56;
+  wallWalk.castShadow = true;
+  wallWalk.receiveShadow = true;
+  segment.add(wallWalk);
+
+  for (const y of [0.58, 1.18, 1.78, 2.38, 2.98]) {
+    const course = new THREE.Mesh(
+      new THREE.BoxGeometry(width + 0.035, 0.035, depth + 0.035),
+      cityWallMortarMaterial
+    );
+    course.position.y = y;
+    segment.add(course);
+  }
+
+  for (let detailIndex = 1; detailIndex <= 5; detailIndex += 1) {
+    const along = -length / 2 + (detailIndex * length) / 6;
+    const slitAlong = along + length / 12;
+    for (const face of [-1, 1]) {
+      const buttress = new THREE.Mesh(
+        new THREE.BoxGeometry(
+          horizontal ? 0.72 : 0.6,
+          2.65,
+          horizontal ? 0.6 : 0.72
+        ),
+        cityWallTrimMaterial
+      );
+      buttress.position.set(
+        horizontal ? along : face * (width / 2 + 0.27),
+        1.32,
+        horizontal ? face * (depth / 2 + 0.27) : along
+      );
+      buttress.castShadow = true;
+      buttress.receiveShadow = true;
+      segment.add(buttress);
+
+      const slit = new THREE.Mesh(
+        new THREE.BoxGeometry(horizontal ? 0.18 : 0.035, 0.62, horizontal ? 0.035 : 0.18),
+        cityWallMortarMaterial
+      );
+      slit.position.set(
+        horizontal ? slitAlong : face * (width / 2 + 0.02),
+        2.42,
+        horizontal ? face * (depth / 2 + 0.02) : slitAlong
+      );
+      segment.add(slit);
+    }
+  }
+
   const count = Math.max(2, Math.floor(length / 2.05));
   for (let index = 0; index < count; index += 1) {
     const along = -length / 2 + ((index + 0.5) * length) / count;
@@ -447,6 +513,21 @@ function addCityCornerTower(x, z) {
     slit.rotation.y = angle;
     tower.add(slit);
   }
+
+  const finial = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 6), cityWallGoldMaterial);
+  finial.position.y = 7.42;
+  tower.add(finial);
+  const flagPole = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.035, 0.045, 2.15, 6),
+    cityWallTrimMaterial
+  );
+  flagPole.position.y = 8.35;
+  tower.add(flagPole);
+  const flag = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.68), cityWallFlagMaterial);
+  flag.position.set(0.62, 8.75, 0);
+  flag.userData.flagPhase = x * 0.07 + z * 0.11;
+  tower.add(flag);
+  cityWallFlags.push(flag);
   cityWallGroup.add(tower);
 }
 
@@ -469,6 +550,15 @@ function addCityGatehouse(x, z, rotation) {
     tower.receiveShadow = true;
     gatehouse.add(tower);
 
+    for (const y of [0.7, 1.45, 2.2, 2.95, 3.7, 4.45]) {
+      const course = new THREE.Mesh(
+        new THREE.BoxGeometry(2.59, 0.035, 2.79),
+        cityWallMortarMaterial
+      );
+      course.position.set(side * 4.9, y, 0);
+      gatehouse.add(course);
+    }
+
     const roof = new THREE.Mesh(new THREE.ConeGeometry(2.05, 2.15, 4), cityWallRoofMaterial);
     roof.position.set(side * 4.9, 6.25, 0);
     roof.rotation.y = Math.PI / 4;
@@ -482,6 +572,15 @@ function addCityGatehouse(x, z, rotation) {
     openGate.position.set(side * 3.65, 1.58, -side * 1.45);
     openGate.castShadow = true;
     gatehouse.add(openGate);
+
+    for (const face of [-1, 1]) {
+      const arrowSlit = new THREE.Mesh(
+        new THREE.BoxGeometry(0.14, 0.72, 0.045),
+        cityWallMortarMaterial
+      );
+      arrowSlit.position.set(side * 4.9, 3.15, face * 1.395);
+      gatehouse.add(arrowSlit);
+    }
   }
 
   const lintel = new THREE.Mesh(
@@ -506,6 +605,42 @@ function addCityGatehouse(x, z, rotation) {
     merlon.position.set(xOffset, 5.55, 0);
     merlon.castShadow = true;
     gatehouse.add(merlon);
+  }
+
+  for (const xOffset of [-2.55, -1.7, -0.85, 0, 0.85, 1.7, 2.55]) {
+    const portcullisBar = new THREE.Mesh(
+      new THREE.BoxGeometry(0.075, 0.95, 0.1),
+      cityWallTrimMaterial
+    );
+    portcullisBar.position.set(xOffset, 3.58, 0);
+    gatehouse.add(portcullisBar);
+    const tooth = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.25, 4), cityWallTrimMaterial);
+    tooth.position.set(xOffset, 3.02, 0);
+    tooth.rotation.y = Math.PI / 4;
+    gatehouse.add(tooth);
+  }
+
+  for (const face of [-1, 1]) {
+    const crest = new THREE.Mesh(new THREE.CircleGeometry(0.52, 18), cityWallFlagMaterial);
+    crest.position.set(0, 4.58, face * 0.99);
+    if (face < 0) crest.rotation.y = Math.PI;
+    gatehouse.add(crest);
+    const crestRim = new THREE.Mesh(new THREE.TorusGeometry(0.55, 0.055, 6, 18), cityWallGoldMaterial);
+    crestRim.position.copy(crest.position);
+    crestRim.rotation.y = crest.rotation.y;
+    gatehouse.add(crestRim);
+
+    for (const xOffset of [-3.05, 3.05]) {
+      const flame = new THREE.Mesh(new THREE.OctahedronGeometry(0.11, 0), cityLampGlassMaterial);
+      flame.position.set(xOffset, 3.1, face * 1.18);
+      gatehouse.add(flame);
+    }
+  }
+  for (const xOffset of [-3.05, 3.05]) {
+    const gateLamp = new THREE.PointLight(0xff9f43, 0.1, 7.5, 2);
+    gateLamp.position.set(xOffset, 3.1, 0);
+    gatehouse.add(gateLamp);
+    cityGateLights.push(gateLamp);
   }
   cityWallGroup.add(gatehouse);
 }
@@ -1576,6 +1711,175 @@ async function createBuildSystem() {
   };
 }
 
+async function createCityDetails() {
+  const propSpecs = [
+    ["well", "./models/town/building_well_blue.gltf"],
+    ["barrel", "./models/town/barrel.gltf"],
+    ["crate", "./models/town/crate_A_small.gltf"],
+    ["sack", "./models/town/sack.gltf"],
+    ["pallet", "./models/town/pallet.gltf"],
+    ["lumber", "./models/town/resource_lumber.gltf"],
+    ["stone", "./models/town/resource_stone.gltf"],
+    ["wheelbarrow", "./models/town/wheelbarrow.gltf"],
+    ["target", "./models/town/target.gltf"],
+    ["weaponrack", "./models/town/weaponrack.gltf"],
+    ["arrows", "./models/town/bucket_arrows.gltf"],
+  ];
+  const loadedProps = await Promise.all(propSpecs.map(([, url]) => loadGLTF(url)));
+  const templates = new Map(
+    propSpecs.map(([id], index) => [id, loadedProps[index].scene])
+  );
+  const root = new THREE.Group();
+
+  const placeProp = (id, x, z, height, rotation = 0) => {
+    const model = templates.get(id)?.clone(true);
+    if (!model) return null;
+    fitModelToHeight(model, height);
+    model.position.x = x;
+    model.position.z = z;
+    model.rotation.y = rotation;
+    setShadows(model);
+    root.add(model);
+    return model;
+  };
+
+  // Northwest storage yard.
+  placeProp("pallet", -30.8, -29.6, 0.32, 0.18);
+  placeProp("crate", -30.6, -29.4, 1.05, -0.12);
+  placeProp("crate", -29.35, -30.15, 0.88, 0.2);
+  placeProp("barrel", -31.7, -27.8, 1.15, 0.08);
+  placeProp("barrel", -30.55, -27.55, 1.08, -0.14);
+  placeProp("sack", -28.8, -29.0, 0.72, -0.4);
+  placeProp("sack", -28.2, -29.55, 0.66, 0.35);
+
+  // Northeast guard training yard.
+  placeProp("target", 29.7, -30.15, 2.3, -0.55);
+  placeProp("target", 27.55, -31.15, 2.05, -0.18);
+  placeProp("weaponrack", 31.5, -26.65, 2.15, -Math.PI / 2);
+  placeProp("arrows", 29.4, -27.0, 1.0, 0.25);
+  placeProp("barrel", 31.3, -29.15, 1.05, 0.12);
+  placeProp("crate", 27.2, -27.65, 0.88, -0.2);
+
+  // Southeast builders' yard.
+  placeProp("lumber", 29.4, 29.75, 1.45, 0.1);
+  placeProp("lumber", 27.4, 31.0, 1.2, -0.24);
+  placeProp("stone", 31.2, 27.6, 1.2, 0.3);
+  placeProp("wheelbarrow", 27.1, 27.2, 1.35, Math.PI * 0.7);
+  placeProp("barrel", 31.4, 30.45, 1.05, -0.1);
+  placeProp("sack", 29.7, 27.5, 0.7, 0.2);
+
+  // Southwest communal corner.
+  placeProp("well", -29.25, 28.8, 3.55, Math.PI / 4);
+  placeProp("barrel", -32.0, 27.1, 1.08, -0.18);
+  placeProp("crate", -31.65, 30.75, 0.92, 0.12);
+  placeProp("sack", -27.2, 30.6, 0.7, -0.4);
+  placeProp("wheelbarrow", -26.9, 27.0, 1.25, -Math.PI * 0.7);
+
+  const benchMaterial = cityGateWoodMaterial;
+  const benchMetalMaterial = cityWallTrimMaterial;
+  const addBench = (x, z) => {
+    const bench = new THREE.Group();
+    bench.position.set(x, 0, z);
+    bench.rotation.y = Math.atan2(-x, -z);
+    const seat = new THREE.Mesh(new THREE.BoxGeometry(2.15, 0.16, 0.62), benchMaterial);
+    seat.position.y = 0.62;
+    seat.castShadow = true;
+    bench.add(seat);
+    const back = new THREE.Mesh(new THREE.BoxGeometry(2.15, 0.66, 0.14), benchMaterial);
+    back.position.set(0, 0.94, -0.28);
+    back.rotation.x = -0.1;
+    back.castShadow = true;
+    bench.add(back);
+    for (const xOffset of [-0.78, 0.78]) {
+      for (const zOffset of [-0.2, 0.2]) {
+        const leg = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.58, 0.12), benchMetalMaterial);
+        leg.position.set(xOffset, 0.3, zOffset);
+        leg.castShadow = true;
+        bench.add(leg);
+      }
+    }
+    root.add(bench);
+  };
+
+  for (const [x, z] of [
+    [-11.45, -11.45],
+    [11.45, -11.45],
+    [11.45, 11.45],
+    [-11.45, 11.45],
+  ]) addBench(x, z);
+
+  const flowerBlueMaterial = new THREE.MeshStandardMaterial({ color: 0x6faed0, roughness: 0.84 });
+  const flowerGoldMaterial = new THREE.MeshStandardMaterial({ color: 0xe2b84d, roughness: 0.84 });
+  const addPlanter = (x, z, phase) => {
+    const planter = new THREE.Group();
+    planter.position.set(x, 0, z);
+    const pot = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.92, 1.08, 0.46, 8),
+      townStoneDarkMaterial
+    );
+    pot.position.y = 0.23;
+    pot.castShadow = true;
+    pot.receiveShadow = true;
+    planter.add(pot);
+    const soil = new THREE.Mesh(new THREE.CylinderGeometry(0.82, 0.82, 0.06, 12), townSoilMaterial);
+    soil.position.y = 0.48;
+    planter.add(soil);
+    for (let index = 0; index < 5; index += 1) {
+      const angle = phase + (index / 5) * Math.PI * 2;
+      const shrub = new THREE.Mesh(
+        new THREE.IcosahedronGeometry(0.34 + (index % 2) * 0.08, 0),
+        townPlantMaterial
+      );
+      shrub.position.set(Math.cos(angle) * 0.45, 0.73, Math.sin(angle) * 0.45);
+      shrub.castShadow = true;
+      planter.add(shrub);
+      const flower = new THREE.Mesh(
+        new THREE.SphereGeometry(0.08, 7, 5),
+        index % 2 ? flowerBlueMaterial : flowerGoldMaterial
+      );
+      flower.position.set(shrub.position.x, 1.02 + (index % 2) * 0.05, shrub.position.z);
+      planter.add(flower);
+    }
+    root.add(planter);
+  };
+
+  addPlanter(-14.2, -14.2, 0.1);
+  addPlanter(14.2, -14.2, 0.8);
+  addPlanter(14.2, 14.2, 1.6);
+  addPlanter(-14.2, 14.2, 2.3);
+
+  const addSignpost = (x, z, rotation) => {
+    const signpost = new THREE.Group();
+    signpost.position.set(x, 0, z);
+    signpost.rotation.y = rotation;
+    const post = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.07, 0.1, 1.85, 7),
+      cityGateWoodMaterial
+    );
+    post.position.y = 0.92;
+    post.castShadow = true;
+    signpost.add(post);
+    for (const [y, direction] of [[1.5, 1], [1.18, -1]]) {
+      const board = new THREE.Mesh(new THREE.BoxGeometry(1.28, 0.28, 0.12), cityGateWoodMaterial);
+      board.position.set(direction * 0.48, y, 0);
+      board.castShadow = true;
+      signpost.add(board);
+      const tip = new THREE.Mesh(new THREE.ConeGeometry(0.19, 0.42, 3), cityGateWoodMaterial);
+      tip.position.set(direction * 1.17, y, 0);
+      tip.rotation.z = direction > 0 ? -Math.PI / 2 : Math.PI / 2;
+      signpost.add(tip);
+    }
+    root.add(signpost);
+  };
+
+  addSignpost(4.35, -31.4, 0);
+  addSignpost(31.4, 4.35, Math.PI / 2);
+  addSignpost(-4.35, 31.4, Math.PI);
+  addSignpost(-31.4, -4.35, -Math.PI / 2);
+
+  return root;
+}
+
 async function loadForestTemplates() {
   const files = [
     "Tree_1_A_Color1.gltf",
@@ -1680,6 +1984,10 @@ const dayCityWallTrimColor = new THREE.Color(0x6f6b63);
 const nightCityWallTrimColor = new THREE.Color(0x2f3338);
 const dayCityWallRoofColor = new THREE.Color(0x334756);
 const nightCityWallRoofColor = new THREE.Color(0x182331);
+const dayCityWallMortarColor = new THREE.Color(0x55534f);
+const nightCityWallMortarColor = new THREE.Color(0x25282c);
+const dayCityWallWalkColor = new THREE.Color(0x746e63);
+const nightCityWallWalkColor = new THREE.Color(0x34363b);
 
 function showThreat(text) {
   threatBanner.textContent = text;
@@ -1727,8 +2035,11 @@ function updateDayNight(delta) {
   cityWallMaterial.color.lerpColors(dayCityWallColor, nightCityWallColor, nightFactor);
   cityWallTrimMaterial.color.lerpColors(dayCityWallTrimColor, nightCityWallTrimColor, nightFactor);
   cityWallRoofMaterial.color.lerpColors(dayCityWallRoofColor, nightCityWallRoofColor, nightFactor);
+  cityWallMortarMaterial.color.lerpColors(dayCityWallMortarColor, nightCityWallMortarColor, nightFactor);
+  cityWallWalkMaterial.color.lerpColors(dayCityWallWalkColor, nightCityWallWalkColor, nightFactor);
   cityLampGlassMaterial.emissiveIntensity = 0.18 + nightFactor * 4.5;
   for (const light of cityStreetLights) light.intensity = 0.1 + nightFactor * 7.5;
+  for (const light of cityGateLights) light.intensity = 0.1 + nightFactor * 9.5;
   if (townCenter) {
     townCenter.warmLight.intensity = nightFactor * 25;
     townCenter.setNightFactor(nightFactor);
@@ -1749,13 +2060,22 @@ function updateDayNight(delta) {
   }
 }
 
+function updateCityWallDetails(time) {
+  for (const flag of cityWallFlags) {
+    const wave = Math.sin(time * 0.0022 + flag.userData.flagPhase);
+    flag.rotation.y = wave * 0.12;
+    flag.scale.x = 1 + wave * 0.055;
+  }
+}
+
 async function loadWorld() {
   loadingText.textContent = "正在唤醒真正的森林";
-  const [loadedKnight, forestTemplates, loadedTownCenter, loadedBuildSystem] = await Promise.all([
+  const [loadedKnight, forestTemplates, loadedTownCenter, loadedBuildSystem, loadedCityDetails] = await Promise.all([
     createKnightRig(),
     loadForestTemplates(),
     createTownCenter(),
     createBuildSystem(),
+    createCityDetails(),
   ]);
   knight = loadedKnight;
   townCenter = loadedTownCenter;
@@ -1763,6 +2083,7 @@ async function loadWorld() {
   scene.add(knight.root);
   scene.add(townCenter.root);
   scene.add(buildSystem.root);
+  scene.add(loadedCityDetails);
   populateForest(forestTemplates);
   setNightMode(nightActive, false, true);
   loadingProgress.style.width = "100%";
@@ -1954,6 +2275,7 @@ function tick(time) {
   const delta = Math.min((time - previousTime) / 1000, 0.05);
   previousTime = time;
   updateDayNight(delta);
+  updateCityWallDetails(time);
   townCenter?.update(delta, time);
 
   if (knight) {
