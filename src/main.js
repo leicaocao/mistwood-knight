@@ -1,6 +1,5 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
-import { clone as cloneSkeleton } from "three/addons/utils/SkeletonUtils.js";
 
 const mount = document.querySelector("#scene");
 const loading = document.querySelector("#loading");
@@ -42,9 +41,9 @@ const dayFog = new THREE.Color(0x9bb9a4);
 const nightFog = new THREE.Color(0x17213a);
 const scene = new THREE.Scene();
 scene.background = daySky.clone();
-scene.fog = new THREE.FogExp2(dayFog, 0.0175);
+scene.fog = new THREE.FogExp2(dayFog, 0.0085);
 
-const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 180);
+const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 360);
 camera.position.set(0, 18, 17);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
@@ -59,23 +58,26 @@ mount.appendChild(renderer.domElement);
 const ambient = new THREE.HemisphereLight(0xeaf5ff, 0x3b5136, 2.3);
 scene.add(ambient);
 const sun = new THREE.DirectionalLight(0xffefc2, 3.2);
-sun.position.set(-14, 22, 10);
+const sunOffset = new THREE.Vector3(-24, 35, 18);
+const sunTarget = new THREE.Object3D();
+sun.position.copy(sunOffset);
 sun.castShadow = true;
 sun.shadow.mapSize.set(1024, 1024);
-sun.shadow.camera.left = -32;
-sun.shadow.camera.right = 32;
-sun.shadow.camera.top = 32;
-sun.shadow.camera.bottom = -32;
+sun.shadow.camera.left = -42;
+sun.shadow.camera.right = 42;
+sun.shadow.camera.top = 42;
+sun.shadow.camera.bottom = -42;
 sun.shadow.camera.near = 1;
-sun.shadow.camera.far = 62;
-scene.add(sun);
+sun.shadow.camera.far = 105;
+sun.target = sunTarget;
+scene.add(sun, sunTarget);
 const moon = new THREE.DirectionalLight(0x8aa7ff, 0);
 moon.position.set(18, 24, -12);
 scene.add(moon);
 
 const groundMaterial = new THREE.MeshStandardMaterial({ color: 0x6f9458, roughness: 1 });
 const ground = new THREE.Mesh(
-  new THREE.CircleGeometry(48, 64),
+  new THREE.CircleGeometry(120, 96),
   groundMaterial
 );
 ground.rotation.x = -Math.PI / 2;
@@ -84,7 +86,7 @@ scene.add(ground);
 
 const pathMaterial = new THREE.MeshStandardMaterial({ color: 0xb6a27c, roughness: 1 });
 const path = new THREE.Mesh(
-  new THREE.PlaneGeometry(6.2, 72),
+  new THREE.PlaneGeometry(7.2, 210),
   pathMaterial
 );
 path.rotation.x = -Math.PI / 2;
@@ -910,139 +912,6 @@ async function createTownCenter() {
   };
 }
 
-function styleMonsterModel(model, night) {
-  model.traverse((child) => {
-    if (!child.isMesh) return;
-    child.castShadow = true;
-    child.receiveShadow = true;
-    const sourceMaterials = Array.isArray(child.material) ? child.material : [child.material];
-    const styledMaterials = sourceMaterials.map((source) => {
-      const material = source.clone();
-      if (material.name === "Glow") {
-        material.emissive = new THREE.Color(night ? 0xff183f : 0xffd34f);
-        material.emissiveIntensity = night ? 4 : 0.75;
-      }
-      return material;
-    });
-    child.material = Array.isArray(child.material) ? styledMaterials : styledMaterials[0];
-  });
-}
-
-function createAnimationRig(model, clips) {
-  const clipByName = (name) => THREE.AnimationClip.findByName(clips, name);
-  const mixer = new THREE.AnimationMixer(model);
-  const actions = {
-    idle: mixer.clipAction(clipByName("Idle_A")),
-    walk: mixer.clipAction(clipByName("Walking_A")),
-    run: mixer.clipAction(clipByName("Running_A")),
-    attack: mixer.clipAction(clipByName("Melee_1H_Attack_Chop")),
-  };
-  actions.attack.setLoop(THREE.LoopOnce, 1);
-  actions.attack.clampWhenFinished = true;
-  actions.idle.play();
-  return { mixer, actions, activeAction: actions.idle, activeState: "idle" };
-}
-
-function playMonsterAnimation(rig, state, restart = false) {
-  const nextAction = rig.actions[state];
-  if (!nextAction || (!restart && rig.activeState === state)) return;
-  nextAction.reset().setEffectiveTimeScale(1).setEffectiveWeight(1).fadeIn(0.12).play();
-  if (rig.activeAction !== nextAction) rig.activeAction.fadeOut(0.12);
-  rig.activeAction = nextAction;
-  rig.activeState = state;
-}
-
-async function loadMonsterAssets() {
-  const [dayCharacter, nightCharacter, general, movement, combat, axe, shield] = await Promise.all([
-    loadGLTF("./models/monsters/Skeleton_Minion.glb"),
-    loadGLTF("./models/monsters/Skeleton_Warrior.glb"),
-    loadGLTF("./models/animations/Rig_Medium_General.glb"),
-    loadGLTF("./models/animations/Rig_Medium_MovementBasic.glb"),
-    loadGLTF("./models/animations/Rig_Medium_CombatMelee.glb"),
-    loadGLTF("./models/monster-gear/Skeleton_Axe.gltf"),
-    loadGLTF("./models/monster-gear/Skeleton_Shield_Large_A.gltf"),
-  ]);
-  return {
-    dayTemplate: dayCharacter.scene,
-    nightTemplate: nightCharacter.scene,
-    clips: [...general.animations, ...movement.animations, ...combat.animations],
-    axeTemplate: axe.scene,
-    shieldTemplate: shield.scene,
-  };
-}
-
-function createMonster(assets, position, index) {
-  const root = new THREE.Group();
-  const dayGroup = new THREE.Group();
-  const nightGroup = new THREE.Group();
-  const dayModel = cloneSkeleton(assets.dayTemplate);
-  const nightModel = cloneSkeleton(assets.nightTemplate);
-
-  const axe = assets.axeTemplate.clone(true);
-  const shield = assets.shieldTemplate.clone(true);
-  nightModel.getObjectByName("handslot.r")?.add(axe);
-  nightModel.getObjectByName("handslot.l")?.add(shield);
-  styleMonsterModel(dayModel, false);
-  styleMonsterModel(nightModel, true);
-  setShadows(axe);
-  setShadows(shield);
-  fitModelToHeight(dayModel, 2.2);
-  fitModelToHeight(nightModel, 2.75);
-
-  dayGroup.add(dayModel);
-  nightGroup.add(nightModel);
-  root.add(dayGroup, nightGroup);
-  root.position.copy(position);
-  root.rotation.y = index * 1.37;
-
-  const aura = new THREE.Mesh(
-    new THREE.TorusGeometry(1.05, 0.075, 8, 32),
-    new THREE.MeshBasicMaterial({
-      color: 0xff234e,
-      transparent: true,
-      opacity: 0.72,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-    })
-  );
-  aura.rotation.x = Math.PI / 2;
-  aura.position.y = 0.08;
-  nightGroup.add(aura);
-  const eyeLight = new THREE.PointLight(0xff1748, 2.1, 5.5, 2);
-  eyeLight.position.set(0, 1.7, 0.25);
-  nightGroup.add(eyeLight);
-
-  scene.add(root);
-  return {
-    root,
-    dayGroup,
-    nightGroup,
-    dayRig: createAnimationRig(dayModel, assets.clips),
-    nightRig: createAnimationRig(nightModel, assets.clips),
-    home: position.clone(),
-    wanderTarget: position.clone(),
-    wanderTimer: index * 0.6,
-    attackCooldown: index * 0.13,
-    direction: new THREE.Vector3(),
-    desiredQuaternion: new THREE.Quaternion(),
-    desiredEuler: new THREE.Euler(),
-    aura,
-    index,
-    night: null,
-  };
-}
-
-function spawnMonsters(assets) {
-  const positions = [
-    new THREE.Vector3(-11, 0, -8),
-    new THREE.Vector3(13, 0, -7),
-    new THREE.Vector3(-15, 0, 8),
-    new THREE.Vector3(12, 0, 12),
-    new THREE.Vector3(1, 0, -17),
-  ];
-  return positions.map((position, index) => createMonster(assets, position, index));
-}
-
 async function loadForestTemplates() {
   const files = [
     "Tree_1_A_Color1.gltf",
@@ -1072,30 +941,30 @@ function placeModel(template, x, z, scale, rotation, castShadow = false) {
 function populateForest(templates) {
   const random = seededRandom(21);
 
-  for (let index = 0; index < 72; index += 1) {
+  for (let index = 0; index < 190; index += 1) {
     const angle = random() * Math.PI * 2;
-    const radius = 27 + random() * 17;
+    const radius = 30 + random() * 78;
     let x = Math.cos(angle) * radius;
     const z = Math.sin(angle) * radius;
-    if (Math.abs(x) < 4.2) x += x < 0 ? -5.2 : 5.2;
-    if (z > 6 && Math.abs(x) < 11) x += x < 0 ? -11 : 11;
+    if (Math.abs(x) < 5.2) x += x < 0 ? -7.2 : 7.2;
+    if (z > 6 && Math.abs(x) < 12) x += x < 0 ? -12 : 12;
     placeModel(
       templates.trees[index % templates.trees.length],
       x,
       z,
       0.92 + random() * 0.46,
       random() * Math.PI * 2,
-      radius < 25
+      radius < 43
     );
   }
 
-  for (let index = 0; index < 86; index += 1) {
+  for (let index = 0; index < 240; index += 1) {
     const isBush = random() > 0.36;
     const angle = random() * Math.PI * 2;
-    const radius = 20 + random() * 23;
+    const radius = 22 + random() * 86;
     let x = Math.cos(angle) * radius;
     const z = Math.sin(angle) * radius;
-    if (Math.abs(x) < 3.6) x += x < 0 ? -4.6 : 4.6;
+    if (Math.abs(x) < 4.8) x += x < 0 ? -6.2 : 6.2;
     placeModel(
       isBush ? templates.bush : templates.rock,
       x,
@@ -1108,7 +977,6 @@ function populateForest(templates) {
 }
 
 let knight = null;
-let monsters = [];
 let townCenter = null;
 let worldPhase = 0.5;
 let nightActive = false;
@@ -1135,17 +1003,10 @@ function setNightMode(nextNight, announce = true, force = false) {
   nightActive = nextNight;
   worldToggle.classList.toggle("night", nightActive);
   worldIcon.textContent = nightActive ? "☾" : "☀";
-  worldLabel.textContent = nightActive ? "夜晚 · 高攻击性" : "白昼 · 低攻击性";
-
-  for (const monster of monsters) {
-    monster.dayGroup.visible = !nightActive;
-    monster.nightGroup.visible = nightActive;
-    monster.night = nightActive;
-    playMonsterAnimation(nightActive ? monster.nightRig : monster.dayRig, "idle", true);
-  }
+  worldLabel.textContent = nightActive ? "夜晚 · 城镇戒备" : "白昼 · 视野清晰";
 
   if (announce) {
-    showThreat(nightActive ? "夜幕降临 · 骷髅已狂暴" : "晨光降临 · 骷髅恢复警戒");
+    showThreat(nightActive ? "夜幕降临 · 城镇火炬已点亮" : "晨光降临 · 森林恢复宁静");
   }
 }
 
@@ -1162,7 +1023,7 @@ function updateDayNight(delta) {
 
   scene.background.lerpColors(daySky, nightSky, nightFactor);
   scene.fog.color.lerpColors(dayFog, nightFog, nightFactor);
-  scene.fog.density = THREE.MathUtils.lerp(0.0175, 0.027, nightFactor);
+  scene.fog.density = THREE.MathUtils.lerp(0.0085, 0.016, nightFactor);
   ambient.intensity = THREE.MathUtils.lerp(2.3, 0.62, nightFactor);
   sun.intensity = THREE.MathUtils.lerp(3.2, 0.14, nightFactor);
   moon.intensity = THREE.MathUtils.lerp(0, 1.25, nightFactor);
@@ -1191,73 +1052,11 @@ function updateDayNight(delta) {
   }
 }
 
-function updateMonster(monster, delta, time) {
-  if (!knight) return;
-  const playerDistance = monster.root.position.distanceTo(knight.root.position);
-  const detectionRadius = nightActive ? 27 : 3.3;
-  const attackRadius = nightActive ? 1.85 : 1.45;
-  const rig = nightActive ? monster.nightRig : monster.dayRig;
-  let state = "idle";
-  let speed = 0;
-
-  if (playerDistance < detectionRadius) {
-    monster.direction.subVectors(knight.root.position, monster.root.position);
-    if (playerDistance <= attackRadius) {
-      state = "attack";
-    } else {
-      state = nightActive ? "run" : "walk";
-      speed = nightActive ? 2.65 : 1.05;
-    }
-  } else {
-    monster.wanderTimer -= delta;
-    if (monster.wanderTimer <= 0) {
-      const angle = time * 0.00023 + monster.index * 1.81;
-      const radius = 2.2 + (monster.index % 3) * 0.55;
-      monster.wanderTarget.set(
-        monster.home.x + Math.cos(angle) * radius,
-        0,
-        monster.home.z + Math.sin(angle) * radius
-      );
-      monster.wanderTimer = 2.6 + (monster.index % 3) * 0.8;
-    }
-    monster.direction.subVectors(monster.wanderTarget, monster.root.position);
-    if (monster.direction.lengthSq() > 0.18) {
-      state = "walk";
-      speed = nightActive ? 0.9 : 0.52;
-    }
-  }
-
-  monster.attackCooldown -= delta;
-  if (state === "attack") {
-    if (monster.attackCooldown <= 0) {
-      playMonsterAnimation(rig, "attack", true);
-      monster.attackCooldown = nightActive ? 0.92 : 1.8;
-    }
-  } else {
-    playMonsterAnimation(rig, state);
-    if (speed > 0 && monster.direction.lengthSq() > 0.001) {
-      monster.direction.y = 0;
-      monster.direction.normalize();
-      monster.root.position.addScaledVector(monster.direction, speed * delta);
-      resolveTownCenterCollision(monster.root.position, 0.65);
-    }
-  }
-
-  if (monster.direction.lengthSq() > 0.001) {
-    monster.desiredEuler.set(0, Math.atan2(monster.direction.x, monster.direction.z), 0);
-    monster.desiredQuaternion.setFromEuler(monster.desiredEuler);
-    monster.root.quaternion.slerp(monster.desiredQuaternion, 1 - Math.exp(-delta * 10));
-  }
-  rig.mixer.update(delta);
-  monster.aura.material.opacity = 0.56 + Math.sin(time * 0.007 + monster.index) * 0.18;
-}
-
 async function loadWorld() {
   loadingText.textContent = "正在唤醒真正的森林";
-  const [loadedKnight, forestTemplates, monsterAssets, loadedTownCenter] = await Promise.all([
+  const [loadedKnight, forestTemplates, loadedTownCenter] = await Promise.all([
     createKnightRig(),
     loadForestTemplates(),
-    loadMonsterAssets(),
     createTownCenter(),
   ]);
   knight = loadedKnight;
@@ -1265,7 +1064,6 @@ async function loadWorld() {
   scene.add(knight.root);
   scene.add(townCenter.root);
   populateForest(forestTemplates);
-  monsters = spawnMonsters(monsterAssets);
   setNightMode(nightActive, false, true);
   loadingProgress.style.width = "100%";
   loadingDetail.textContent = "模型与动画已就绪";
@@ -1414,10 +1212,13 @@ function tick(time) {
     knight.root.position.addScaledVector(velocity, delta);
     if (resolveTownCenterCollision(knight.root.position, 0.72)) velocity.multiplyScalar(0.2);
     const distance = Math.hypot(knight.root.position.x, knight.root.position.z);
-    if (distance > 41) {
-      knight.root.position.x *= 41 / distance;
-      knight.root.position.z *= 41 / distance;
+    if (distance > 108) {
+      knight.root.position.x *= 108 / distance;
+      knight.root.position.z *= 108 / distance;
     }
+
+    sunTarget.position.copy(knight.root.position);
+    sun.position.copy(knight.root.position).add(sunOffset);
 
     cameraGoal.copy(knight.root.position).addScaledVector(cameraOffset, townCenter?.cameraScale ?? 1);
     camera.position.lerp(cameraGoal, 1 - Math.exp(-delta * 4.7));
@@ -1427,8 +1228,6 @@ function tick(time) {
       .addScaledVector(lookAhead, townCenter?.cameraScale ?? 1);
     camera.lookAt(lookGoal);
   }
-
-  for (const monster of monsters) updateMonster(monster, delta, time);
 
   renderer.render(scene, camera);
 }

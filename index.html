@@ -7,7 +7,7 @@
     <meta name="description" content="雾林骑士：一个可移动骑士与低多边形森林的 Three.js 测试场景。" />
     <title>雾林骑士</title>
     <link rel="stylesheet" href="./styles.css?v=5" />
-    <script defer src="./game.js?v=15"></script>
+    <script defer src="./game.js?v=16"></script>
   </head>
   <body>
     <main class="game-shell">
@@ -21,13 +21,13 @@
         <div class="hud-status">
           <button id="world-toggle" class="world-state" type="button" title="切换昼夜（N）">
             <span id="world-icon" class="world-icon">☀</span>
-            <span><strong id="world-label">白昼 · 低攻击性</strong><small id="world-clock">12:00</small></span>
+            <span><strong id="world-label">白昼 · 视野清晰</strong><small id="world-clock">12:00</small></span>
           </button>
           <div class="status"><span></span><strong id="motion">待命</strong></div>
         </div>
       </header>
 
-      <div id="threat-banner" class="threat-banner">夜幕降临 · 骷髅已狂暴</div>
+      <div id="threat-banner" class="threat-banner">夜幕降临 · 城镇火炬已点亮</div>
 
       <button id="town-upgrade" class="town-upgrade" type="button" disabled>
         <span>城镇中心</span>
@@ -62,7 +62,7 @@
         <button class="attack" id="attack-button" type="button" aria-label="攻击">剑</button>
       </div>
 
-      <footer class="credit">Three.js · KayKit CC0 骑士、骷髅与骨骼动画</footer>
+      <footer class="credit">Three.js · KayKit CC0 骑士、建筑与环境模型</footer>
     </main>
   </body>
 </html>
