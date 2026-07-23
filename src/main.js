@@ -110,6 +110,28 @@ townSquare.position.y = 0.035;
 townSquare.receiveShadow = true;
 scene.add(townSquare);
 
+const plazaStoneMaterials = [
+  new THREE.MeshStandardMaterial({ color: 0x8f8775, roughness: 0.96 }),
+  new THREE.MeshStandardMaterial({ color: 0xb4a98e, roughness: 0.96 }),
+];
+
+function addPlazaStoneRing(radius, count, width) {
+  for (let index = 0; index < count; index += 1) {
+    const angle = (index / count) * Math.PI * 2;
+    const stone = new THREE.Mesh(
+      new THREE.BoxGeometry(width, 0.08, 0.54),
+      plazaStoneMaterials[index % plazaStoneMaterials.length]
+    );
+    stone.position.set(Math.cos(angle) * radius, 0.075, Math.sin(angle) * radius);
+    stone.rotation.y = -angle;
+    stone.receiveShadow = true;
+    scene.add(stone);
+  }
+}
+
+addPlazaStoneRing(13.85, 44, 1.48);
+addPlazaStoneRing(15.45, 52, 1.34);
+
 const manager = new THREE.LoadingManager();
 manager.onProgress = (_url, loaded, total) => {
   const percent = total ? Math.round((loaded / total) * 100) : 0;
@@ -251,6 +273,7 @@ const townClockMaterial = new THREE.MeshStandardMaterial({
   roughness: 0.58,
   side: THREE.DoubleSide,
 });
+const townFlameMaterial = new THREE.MeshBasicMaterial({ color: 0xffbc57 });
 
 function addTownBlock(group, size, position, material = townStoneMaterial) {
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(size.x, size.y, size.z), material);
@@ -318,7 +341,55 @@ function addTownBanner(group, x, z, baseY = 0.84, height = 4.2) {
   const cloth = new THREE.Mesh(new THREE.BoxGeometry(0.86, 1.28, 0.07), townBlueMaterial);
   cloth.position.set(x + 0.47, baseY + height - 0.75, z);
   cloth.castShadow = true;
+  cloth.userData.townBanner = true;
+  cloth.userData.bannerPhase = x * 0.73 + z * 0.41;
   group.add(cloth);
+}
+
+function addTownEntranceDetails(group, radius, baseY, grand = false) {
+  const railHeight = grand ? 1.05 : 0.82;
+  for (const x of [-3.2, 3.2]) {
+    addTownBlock(
+      group,
+      new THREE.Vector3(0.34, railHeight, 2.45),
+      new THREE.Vector3(x, railHeight / 2, -radius - 0.12),
+      townStoneDarkMaterial
+    );
+    addTownBlock(
+      group,
+      new THREE.Vector3(0.58, 1.15, 0.58),
+      new THREE.Vector3(x, 0.58, -radius + 0.88),
+      townStoneMaterial
+    );
+
+    const bowl = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.3, 0.18, 0.2, 10),
+      townGoldMaterial
+    );
+    bowl.position.set(x, 1.24, -radius + 0.88);
+    bowl.castShadow = true;
+    group.add(bowl);
+
+    const flame = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 8), townFlameMaterial);
+    flame.scale.y = 1.45;
+    flame.position.set(x, 1.48, -radius + 0.88);
+    flame.userData.townFlame = true;
+    flame.userData.flamePhase = x > 0 ? 1.7 : 0.2;
+    group.add(flame);
+
+    const torchLight = new THREE.PointLight(0xff9f43, 0.18, grand ? 7.5 : 6.2, 2);
+    torchLight.position.set(x, 1.65, -radius + 0.62);
+    torchLight.userData.townTorch = true;
+    group.add(torchLight);
+  }
+
+  const threshold = addTownBlock(
+    group,
+    new THREE.Vector3(5.7, 0.13, 0.62),
+    new THREE.Vector3(0, baseY + 0.08, -radius + 1.15),
+    townGoldMaterial
+  );
+  threshold.castShadow = false;
 }
 
 function addTownBattlements(group, radius, count, baseY, frontGap = 4.3) {
@@ -396,6 +467,7 @@ async function createTownCenter() {
   addTownClock(townHall, 0.64, 5.25, -2.65);
   addTownBanner(townHall, -2.65, -6.05, hallBaseY, 4.15);
   addTownBanner(townHall, 2.65, -6.05, hallBaseY, 4.15);
+  addTownEntranceDetails(townHall, 8.1, hallBaseY);
   stages.push(townHall);
 
   const keep = new THREE.Group();
@@ -411,6 +483,7 @@ async function createTownCenter() {
   addTownClock(keep, 0.83, 6.5, -3.25);
   addTownBanner(keep, -3.15, -8.15, keepBaseY, 5.4);
   addTownBanner(keep, 3.15, -8.15, keepBaseY, 5.4);
+  addTownEntranceDetails(keep, 10.15, keepBaseY, true);
   stages.push(keep);
 
   const castleHall = new THREE.Group();
@@ -429,6 +502,7 @@ async function createTownCenter() {
   addTownClock(castleHall, 1.05, 7.85, -3.85);
   addTownBanner(castleHall, -3.55, -10.2, castleBaseY, 6.6);
   addTownBanner(castleHall, 3.55, -10.2, castleBaseY, 6.6);
+  addTownEntranceDetails(castleHall, 12.35, castleBaseY, true);
   stages.push(castleHall);
 
   stages.forEach((stage, index) => {
@@ -449,7 +523,33 @@ async function createTownCenter() {
   lantern.position.copy(warmLight.position);
   root.add(lantern);
 
+  const upgradeRingMaterial = new THREE.MeshBasicMaterial({
+    color: 0x7fd8ff,
+    transparent: true,
+    opacity: 0,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
+  const upgradeRing = new THREE.Mesh(
+    new THREE.TorusGeometry(4.2, 0.1, 8, 64),
+    upgradeRingMaterial
+  );
+  upgradeRing.rotation.x = Math.PI / 2;
+  upgradeRing.position.y = 1.16;
+  upgradeRing.visible = false;
+  root.add(upgradeRing);
+
+  const banners = [];
+  const flames = [];
+  const torchLights = [];
+  root.traverse((child) => {
+    if (child.userData.townBanner) banners.push(child);
+    if (child.userData.townFlame) flames.push(child);
+    if (child.userData.townTorch) torchLights.push(child);
+  });
+
   let level = 0;
+  let upgradeProgress = 1;
   const updateUI = () => {
     townLevelLabel.textContent = levelNames[level];
     townActionLabel.textContent = level === stages.length - 1 ? "已达到最高等级" : "U · 升级";
@@ -460,8 +560,41 @@ async function createTownCenter() {
     stages[level].visible = false;
     level += 1;
     stages[level].visible = true;
+    stages[level].scale.setScalar(0.84);
+    upgradeProgress = 0;
+    upgradeRing.visible = true;
+    upgradeRing.scale.setScalar(0.45);
     updateUI();
+    showThreat(`${levelNames[level]} · 建造完成`);
     return true;
+  };
+  const update = (delta, time) => {
+    for (const banner of banners) {
+      const wave = Math.sin(time * 0.0024 + banner.userData.bannerPhase);
+      banner.rotation.y = wave * 0.12;
+      banner.scale.y = 1 + wave * 0.025;
+    }
+    for (const flame of flames) {
+      const flicker = Math.sin(time * 0.012 + flame.userData.flamePhase) * 0.08;
+      flame.scale.set(1 - flicker * 0.25, 1.45 + flicker, 1 - flicker * 0.25);
+    }
+
+    if (upgradeProgress >= 1) return;
+    upgradeProgress = Math.min(upgradeProgress + delta * 0.82, 1);
+    const ease = 1 - Math.pow(1 - upgradeProgress, 3);
+    const overshoot = Math.sin(upgradeProgress * Math.PI) * 0.045;
+    stages[level].scale.setScalar(0.84 + ease * 0.16 + overshoot);
+    upgradeRing.scale.setScalar(0.45 + ease * 2.25);
+    upgradeRing.rotation.z = time * 0.00055;
+    upgradeRingMaterial.opacity = Math.sin(upgradeProgress * Math.PI) * 0.72;
+    if (upgradeProgress >= 1) {
+      stages[level].scale.setScalar(1);
+      upgradeRing.visible = false;
+    }
+  };
+  const setNightFactor = (nightFactor) => {
+    for (const light of torchLights) light.intensity = 0.3 + nightFactor * 18;
+    townClockMaterial.emissiveIntensity = 0.16 + nightFactor * 2.8;
   };
   updateUI();
   townUpgradeButton.disabled = false;
@@ -469,6 +602,8 @@ async function createTownCenter() {
     root,
     warmLight,
     upgrade,
+    update,
+    setNightFactor,
     get collisionRadius() { return collisionRadii[level]; },
     get cameraScale() { return cameraScales[level]; },
     get levelName() { return levelNames[level]; },
@@ -736,7 +871,10 @@ function updateDayNight(delta) {
   pathMaterial.color.lerpColors(dayPathColor, nightPathColor, nightFactor);
   clearingMaterial.color.lerpColors(dayClearingColor, nightClearingColor, nightFactor);
   townSquareMaterial.color.lerpColors(dayTownSquareColor, nightTownSquareColor, nightFactor);
-  if (townCenter) townCenter.warmLight.intensity = nightFactor * 4.2;
+  if (townCenter) {
+    townCenter.warmLight.intensity = nightFactor * 25;
+    townCenter.setNightFactor(nightFactor);
+  }
   setNightMode(nightFactor > 0.68);
 
   const totalMinutes = Math.floor(worldPhase * 24 * 60);
@@ -949,6 +1087,7 @@ function tick(time) {
   const delta = Math.min((time - previousTime) / 1000, 0.05);
   previousTime = time;
   updateDayNight(delta);
+  townCenter?.update(delta, time);
 
   if (knight) {
     const forwardInput = (keys.forward ? 1 : 0) - (keys.back ? 1 : 0);
