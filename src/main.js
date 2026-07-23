@@ -274,6 +274,13 @@ const townClockMaterial = new THREE.MeshStandardMaterial({
   side: THREE.DoubleSide,
 });
 const townFlameMaterial = new THREE.MeshBasicMaterial({ color: 0xffbc57 });
+const townSparkMaterial = new THREE.MeshBasicMaterial({
+  color: 0xbfeaff,
+  transparent: true,
+  opacity: 0.82,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending,
+});
 
 function addTownBlock(group, size, position, material = townStoneMaterial) {
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(size.x, size.y, size.z), material);
@@ -307,6 +314,22 @@ function addTownFoundation(group, radius) {
   rim.castShadow = true;
   group.add(rim);
 
+  const masonryCount = Math.round(radius * 2.7);
+  for (let index = 0; index < masonryCount; index += 1) {
+    const angle = (index / masonryCount) * Math.PI * 2;
+    const x = Math.cos(angle) * (radius - 1.22);
+    const z = Math.sin(angle) * (radius - 1.22);
+    if (z < -radius * 0.72 && Math.abs(x) < 3.5) continue;
+    const inlay = addTownBlock(
+      group,
+      new THREE.Vector3(0.72, 0.055, 0.34),
+      new THREE.Vector3(x, 1.015, z),
+      townStoneDarkMaterial
+    );
+    inlay.rotation.y = -angle;
+    inlay.castShadow = false;
+  }
+
   for (let step = 0; step < 4; step += 1) {
     addTownBlock(
       group,
@@ -338,11 +361,21 @@ function addTownBanner(group, x, z, baseY = 0.84, height = 4.2) {
   pole.castShadow = true;
   group.add(pole);
 
+  const finial = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.38, 8), townGoldMaterial);
+  finial.position.set(x, baseY + height + 0.19, z);
+  finial.castShadow = true;
+  group.add(finial);
+
   const cloth = new THREE.Mesh(new THREE.BoxGeometry(0.86, 1.28, 0.07), townBlueMaterial);
   cloth.position.set(x + 0.47, baseY + height - 0.75, z);
   cloth.castShadow = true;
   cloth.userData.townBanner = true;
   cloth.userData.bannerPhase = x * 0.73 + z * 0.41;
+  const emblem = new THREE.Mesh(new THREE.OctahedronGeometry(0.2, 0), townGoldMaterial);
+  emblem.scale.y = 1.28;
+  emblem.position.z = -0.075;
+  emblem.castShadow = true;
+  cloth.add(emblem);
   group.add(cloth);
 }
 
@@ -381,6 +414,21 @@ function addTownEntranceDetails(group, radius, baseY, grand = false) {
     torchLight.position.set(x, 1.65, -radius + 0.62);
     torchLight.userData.townTorch = true;
     group.add(torchLight);
+
+    for (let puff = 0; puff < 3; puff += 1) {
+      const smokeMaterial = new THREE.MeshBasicMaterial({
+        color: 0x83908d,
+        transparent: true,
+        opacity: 0.12,
+        depthWrite: false,
+      });
+      const smoke = new THREE.Mesh(new THREE.SphereGeometry(0.13, 8, 6), smokeMaterial);
+      smoke.position.set(x, 1.76 + puff * 0.2, -radius + 0.88);
+      smoke.userData.townSmoke = true;
+      smoke.userData.smokeOrigin = smoke.position.clone();
+      smoke.userData.smokePhase = puff / 3 + (x > 0 ? 0.37 : 0);
+      group.add(smoke);
+    }
   }
 
   const threshold = addTownBlock(
@@ -390,6 +438,49 @@ function addTownEntranceDetails(group, radius, baseY, grand = false) {
     townGoldMaterial
   );
   threshold.castShadow = false;
+}
+
+function addTownSeal(group, radius, level) {
+  const seal = new THREE.Group();
+  seal.position.set(0, 0.1, -radius - 1.85);
+
+  const base = new THREE.Mesh(
+    new THREE.CylinderGeometry(1.05 + level * 0.08, 1.05 + level * 0.08, 0.07, 32),
+    townStoneDarkMaterial
+  );
+  base.receiveShadow = true;
+  seal.add(base);
+
+  const field = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.82 + level * 0.07, 0.82 + level * 0.07, 0.085, 32),
+    townBlueMaterial
+  );
+  field.position.y = 0.055;
+  field.receiveShadow = true;
+  seal.add(field);
+
+  const ring = new THREE.Mesh(
+    new THREE.TorusGeometry(0.89 + level * 0.07, 0.075, 8, 32),
+    townGoldMaterial
+  );
+  ring.rotation.x = Math.PI / 2;
+  ring.position.y = 0.11;
+  seal.add(ring);
+
+  const longRay = addTownBlock(
+    seal,
+    new THREE.Vector3(0.18, 0.08, 1.14 + level * 0.08),
+    new THREE.Vector3(0, 0.12, 0),
+    townGoldMaterial
+  );
+  longRay.castShadow = false;
+  const crossRay = longRay.clone();
+  crossRay.rotation.y = Math.PI / 2;
+  seal.add(crossRay);
+  const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.1, 16), townClockMaterial);
+  hub.position.y = 0.15;
+  seal.add(hub);
+  group.add(seal);
 }
 
 function addTownBattlements(group, radius, count, baseY, frontGap = 4.3) {
@@ -423,6 +514,22 @@ function addTownClock(group, radius, y, z) {
   rim.castShadow = true;
   clock.add(rim);
 
+  for (let tick = 0; tick < 12; tick += 1) {
+    const angle = (tick / 12) * Math.PI * 2;
+    const marker = addTownBlock(
+      clock,
+      new THREE.Vector3(radius * 0.09, radius * (tick % 3 === 0 ? 0.22 : 0.14), 0.06),
+      new THREE.Vector3(
+        Math.sin(angle) * radius * 0.76,
+        Math.cos(angle) * radius * 0.76,
+        -0.075
+      ),
+      townStoneDarkMaterial
+    );
+    marker.rotation.z = -angle;
+    marker.castShadow = false;
+  }
+
   const hourHand = addTownBlock(
     clock,
     new THREE.Vector3(radius * 0.12, radius * 0.72, 0.08),
@@ -437,6 +544,9 @@ function addTownClock(group, radius, y, z) {
     townStoneDarkMaterial
   );
   minuteHand.rotation.z = -0.9;
+  const handHub = new THREE.Mesh(new THREE.SphereGeometry(radius * 0.11, 10, 8), townStoneDarkMaterial);
+  handHub.position.z = -0.13;
+  clock.add(handHub);
   clock.position.set(0, y, z);
   group.add(clock);
 }
@@ -468,6 +578,7 @@ async function createTownCenter() {
   addTownBanner(townHall, -2.65, -6.05, hallBaseY, 4.15);
   addTownBanner(townHall, 2.65, -6.05, hallBaseY, 4.15);
   addTownEntranceDetails(townHall, 8.1, hallBaseY);
+  addTownSeal(townHall, 8.1, 0);
   stages.push(townHall);
 
   const keep = new THREE.Group();
@@ -484,6 +595,7 @@ async function createTownCenter() {
   addTownBanner(keep, -3.15, -8.15, keepBaseY, 5.4);
   addTownBanner(keep, 3.15, -8.15, keepBaseY, 5.4);
   addTownEntranceDetails(keep, 10.15, keepBaseY, true);
+  addTownSeal(keep, 10.15, 1);
   stages.push(keep);
 
   const castleHall = new THREE.Group();
@@ -503,6 +615,7 @@ async function createTownCenter() {
   addTownBanner(castleHall, -3.55, -10.2, castleBaseY, 6.6);
   addTownBanner(castleHall, 3.55, -10.2, castleBaseY, 6.6);
   addTownEntranceDetails(castleHall, 12.35, castleBaseY, true);
+  addTownSeal(castleHall, 12.35, 2);
   stages.push(castleHall);
 
   stages.forEach((stage, index) => {
@@ -539,12 +652,24 @@ async function createTownCenter() {
   upgradeRing.visible = false;
   root.add(upgradeRing);
 
+  const upgradeSparks = new THREE.Group();
+  for (let index = 0; index < 18; index += 1) {
+    const spark = new THREE.Mesh(new THREE.SphereGeometry(0.075, 7, 6), townSparkMaterial);
+    spark.userData.sparkAngle = (index / 18) * Math.PI * 2;
+    spark.userData.sparkPhase = index / 18;
+    upgradeSparks.add(spark);
+  }
+  upgradeSparks.visible = false;
+  root.add(upgradeSparks);
+
   const banners = [];
   const flames = [];
+  const smokePuffs = [];
   const torchLights = [];
   root.traverse((child) => {
     if (child.userData.townBanner) banners.push(child);
     if (child.userData.townFlame) flames.push(child);
+    if (child.userData.townSmoke) smokePuffs.push(child);
     if (child.userData.townTorch) torchLights.push(child);
   });
 
@@ -563,6 +688,7 @@ async function createTownCenter() {
     stages[level].scale.setScalar(0.84);
     upgradeProgress = 0;
     upgradeRing.visible = true;
+    upgradeSparks.visible = true;
     upgradeRing.scale.setScalar(0.45);
     updateUI();
     showThreat(`${levelNames[level]} · 建造完成`);
@@ -578,6 +704,17 @@ async function createTownCenter() {
       const flicker = Math.sin(time * 0.012 + flame.userData.flamePhase) * 0.08;
       flame.scale.set(1 - flicker * 0.25, 1.45 + flicker, 1 - flicker * 0.25);
     }
+    for (const smoke of smokePuffs) {
+      const rise = (time * 0.00024 + smoke.userData.smokePhase) % 1;
+      const origin = smoke.userData.smokeOrigin;
+      smoke.position.set(
+        origin.x + Math.sin(time * 0.0015 + smoke.userData.smokePhase * 8) * 0.11,
+        origin.y + rise * 1.15,
+        origin.z
+      );
+      smoke.scale.setScalar(0.55 + rise * 1.25);
+      smoke.material.opacity = (1 - rise) * 0.14;
+    }
 
     if (upgradeProgress >= 1) return;
     upgradeProgress = Math.min(upgradeProgress + delta * 0.82, 1);
@@ -587,9 +724,17 @@ async function createTownCenter() {
     upgradeRing.scale.setScalar(0.45 + ease * 2.25);
     upgradeRing.rotation.z = time * 0.00055;
     upgradeRingMaterial.opacity = Math.sin(upgradeProgress * Math.PI) * 0.72;
+    for (const spark of upgradeSparks.children) {
+      const rise = (upgradeProgress + spark.userData.sparkPhase) % 1;
+      const angle = spark.userData.sparkAngle + time * 0.00045;
+      const radius = 2.4 + ease * 7.2;
+      spark.position.set(Math.cos(angle) * radius, 0.9 + rise * 4.2, Math.sin(angle) * radius);
+      spark.scale.setScalar(1 - rise * 0.62);
+    }
     if (upgradeProgress >= 1) {
       stages[level].scale.setScalar(1);
       upgradeRing.visible = false;
+      upgradeSparks.visible = false;
     }
   };
   const setNightFactor = (nightFactor) => {
