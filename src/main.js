@@ -274,6 +274,7 @@ const townClockMaterial = new THREE.MeshStandardMaterial({
   side: THREE.DoubleSide,
 });
 const townFlameMaterial = new THREE.MeshBasicMaterial({ color: 0xffbc57 });
+const townWindowFrameMaterial = new THREE.MeshStandardMaterial({ color: 0x9b7c32, roughness: 0.72 });
 const townSparkMaterial = new THREE.MeshBasicMaterial({
   color: 0xbfeaff,
   transparent: true,
@@ -483,6 +484,46 @@ function addTownSeal(group, radius, level) {
   group.add(seal);
 }
 
+function createArchGeometry(width, height) {
+  const shape = new THREE.Shape();
+  const shoulder = height - width * 0.5;
+  shape.moveTo(-width / 2, 0);
+  shape.lineTo(-width / 2, shoulder);
+  shape.quadraticCurveTo(-width / 2, height, 0, height);
+  shape.quadraticCurveTo(width / 2, height, width / 2, shoulder);
+  shape.lineTo(width / 2, 0);
+  shape.closePath();
+  const geometry = new THREE.ShapeGeometry(shape, 5);
+  geometry.center();
+  return geometry;
+}
+
+function addTownWindow(group, x, y, z, width = 0.42, height = 0.72) {
+  const windowGroup = new THREE.Group();
+  windowGroup.position.set(x, y, z);
+
+  const frame = new THREE.Mesh(
+    createArchGeometry(width + 0.18, height + 0.18),
+    townWindowFrameMaterial
+  );
+  frame.position.z = 0.018;
+  frame.castShadow = true;
+  windowGroup.add(frame);
+
+  const windowMaterial = new THREE.MeshStandardMaterial({
+    color: 0x315477,
+    emissive: 0xffa64d,
+    emissiveIntensity: 0.08,
+    roughness: 0.5,
+    side: THREE.DoubleSide,
+  });
+  const pane = new THREE.Mesh(createArchGeometry(width, height), windowMaterial);
+  pane.position.z = -0.01;
+  pane.userData.townWindow = true;
+  windowGroup.add(pane);
+  group.add(windowGroup);
+}
+
 function addTownBattlements(group, radius, count, baseY, frontGap = 4.3) {
   for (let index = 0; index < count; index += 1) {
     const angle = (index / count) * Math.PI * 2;
@@ -530,23 +571,38 @@ function addTownClock(group, radius, y, z) {
     marker.castShadow = false;
   }
 
+  const hourPivot = new THREE.Group();
+  hourPivot.userData.townClockHand = "hour";
   const hourHand = addTownBlock(
-    clock,
+    hourPivot,
     new THREE.Vector3(radius * 0.12, radius * 0.72, 0.08),
-    new THREE.Vector3(0, radius * 0.23, -0.08),
+    new THREE.Vector3(0, radius * 0.26, -0.1),
     townStoneDarkMaterial
   );
-  hourHand.rotation.z = 0.42;
+  clock.add(hourPivot);
+  const minutePivot = new THREE.Group();
+  minutePivot.userData.townClockHand = "minute";
   const minuteHand = addTownBlock(
-    clock,
+    minutePivot,
     new THREE.Vector3(radius * 0.1, radius * 0.94, 0.07),
-    new THREE.Vector3(-radius * 0.2, radius * 0.13, -0.09),
+    new THREE.Vector3(0, radius * 0.37, -0.11),
     townStoneDarkMaterial
   );
-  minuteHand.rotation.z = -0.9;
+  clock.add(minutePivot);
   const handHub = new THREE.Mesh(new THREE.SphereGeometry(radius * 0.11, 10, 8), townStoneDarkMaterial);
   handHub.position.z = -0.13;
   clock.add(handHub);
+
+  const bell = new THREE.Mesh(
+    new THREE.ConeGeometry(radius * 0.19, radius * 0.34, 12, 1, true),
+    townGoldMaterial
+  );
+  bell.position.set(0, -radius * 1.27, -0.05);
+  bell.rotation.z = Math.PI;
+  clock.add(bell);
+  const clapper = new THREE.Mesh(new THREE.SphereGeometry(radius * 0.075, 8, 6), townStoneDarkMaterial);
+  clapper.position.set(0, -radius * 1.44, -0.05);
+  clock.add(clapper);
   clock.position.set(0, y, z);
   group.add(clock);
 }
@@ -559,8 +615,13 @@ async function createTownCenter() {
     loadGLTF("./models/town/building_church_blue.gltf"),
     loadGLTF("./models/town/building_tower_A_blue.gltf"),
     loadGLTF("./models/town/building_tower_B_blue.gltf"),
+    loadGLTF("./models/town/weaponrack.gltf"),
+    loadGLTF("./models/town/barrel.gltf"),
+    loadGLTF("./models/town/crate_A_small.gltf"),
+    loadGLTF("./models/town/wheelbarrow.gltf"),
   ]);
-  const [barracks, castle, tavern, church, towerA, towerB] = loadedAssets.map((asset) => asset.scene);
+  const [barracks, castle, tavern, church, towerA, towerB, weaponRack, barrel, crate, wheelbarrow] =
+    loadedAssets.map((asset) => asset.scene);
   const root = new THREE.Group();
   const collisionRadii = [8.5, 10.6, 12.9];
   const cameraScales = [1, 1.15, 1.38];
@@ -575,6 +636,12 @@ async function createTownCenter() {
   addTownModel(townHall, towerB, 6.45, -5.85, -2.3, 0, hallBaseY);
   addTownModel(townHall, towerB, 6.45, 5.85, -2.3, 0, hallBaseY);
   addTownClock(townHall, 0.64, 5.25, -2.65);
+  addTownWindow(townHall, -5.85, 3.45, -3.72, 0.38, 0.68);
+  addTownWindow(townHall, 5.85, 3.45, -3.72, 0.38, 0.68);
+  addTownWindow(townHall, -1.25, 6.45, -2.67, 0.32, 0.58);
+  addTownWindow(townHall, 1.25, 6.45, -2.67, 0.32, 0.58);
+  addTownModel(townHall, barrel, 0.92, -4.45, -4.55, 0.2, hallBaseY);
+  addTownModel(townHall, crate, 0.82, 4.35, -4.65, -0.18, hallBaseY);
   addTownBanner(townHall, -2.65, -6.05, hallBaseY, 4.15);
   addTownBanner(townHall, 2.65, -6.05, hallBaseY, 4.15);
   addTownEntranceDetails(townHall, 8.1, hallBaseY);
@@ -592,6 +659,13 @@ async function createTownCenter() {
   addTownModel(keep, towerA, 7.8, -7.7, 4.4, 0, keepBaseY);
   addTownModel(keep, towerA, 7.8, 7.7, 4.4, 0, keepBaseY);
   addTownClock(keep, 0.83, 6.5, -3.25);
+  addTownWindow(keep, -7.55, 4.25, -5.55, 0.42, 0.76);
+  addTownWindow(keep, 7.55, 4.25, -5.55, 0.42, 0.76);
+  addTownWindow(keep, -1.52, 5.45, -3.27, 0.36, 0.66);
+  addTownWindow(keep, 1.52, 5.45, -3.27, 0.36, 0.66);
+  addTownModel(keep, weaponRack, 1.65, -5.25, -6.55, 0.08, keepBaseY);
+  addTownModel(keep, wheelbarrow, 1.25, 5.35, -6.45, -0.42, keepBaseY);
+  addTownModel(keep, barrel, 1.05, 4.2, -6.75, 0, keepBaseY);
   addTownBanner(keep, -3.15, -8.15, keepBaseY, 5.4);
   addTownBanner(keep, 3.15, -8.15, keepBaseY, 5.4);
   addTownEntranceDetails(keep, 10.15, keepBaseY, true);
@@ -612,6 +686,14 @@ async function createTownCenter() {
   addTownModel(castleHall, towerA, 9.35, -7.2, 7.25, 0, castleBaseY);
   addTownModel(castleHall, towerA, 9.35, 7.2, 7.25, 0, castleBaseY);
   addTownClock(castleHall, 1.05, 7.85, -3.85);
+  addTownWindow(castleHall, -8.5, 4.95, -6.7, 0.46, 0.82);
+  addTownWindow(castleHall, 8.5, 4.95, -6.7, 0.46, 0.82);
+  addTownWindow(castleHall, -1.72, 6.65, -3.87, 0.4, 0.72);
+  addTownWindow(castleHall, 1.72, 6.65, -3.87, 0.4, 0.72);
+  addTownModel(castleHall, weaponRack, 1.85, -5.75, -8.55, 0.06, castleBaseY);
+  addTownModel(castleHall, weaponRack, 1.85, 5.75, -8.55, -0.06, castleBaseY);
+  addTownModel(castleHall, crate, 1.05, -4.45, -8.85, 0.25, castleBaseY);
+  addTownModel(castleHall, barrel, 1.12, 4.35, -8.9, 0, castleBaseY);
   addTownBanner(castleHall, -3.55, -10.2, castleBaseY, 6.6);
   addTownBanner(castleHall, 3.55, -10.2, castleBaseY, 6.6);
   addTownEntranceDetails(castleHall, 12.35, castleBaseY, true);
@@ -666,11 +748,15 @@ async function createTownCenter() {
   const flames = [];
   const smokePuffs = [];
   const torchLights = [];
+  const clockHands = [];
+  const townWindows = [];
   root.traverse((child) => {
     if (child.userData.townBanner) banners.push(child);
     if (child.userData.townFlame) flames.push(child);
     if (child.userData.townSmoke) smokePuffs.push(child);
     if (child.userData.townTorch) torchLights.push(child);
+    if (child.userData.townClockHand) clockHands.push(child);
+    if (child.userData.townWindow) townWindows.push(child);
   });
 
   let level = 0;
@@ -715,6 +801,11 @@ async function createTownCenter() {
       smoke.scale.setScalar(0.55 + rise * 1.25);
       smoke.material.opacity = (1 - rise) * 0.14;
     }
+    for (const hand of clockHands) {
+      hand.rotation.z = hand.userData.townClockHand === "hour"
+        ? -worldPhase * Math.PI * 4
+        : -worldPhase * Math.PI * 48;
+    }
 
     if (upgradeProgress >= 1) return;
     upgradeProgress = Math.min(upgradeProgress + delta * 0.82, 1);
@@ -740,6 +831,9 @@ async function createTownCenter() {
   const setNightFactor = (nightFactor) => {
     for (const light of torchLights) light.intensity = 0.3 + nightFactor * 18;
     townClockMaterial.emissiveIntensity = 0.16 + nightFactor * 2.8;
+    for (const window of townWindows) {
+      window.material.emissiveIntensity = 0.08 + nightFactor * 3.8;
+    }
   };
   updateUI();
   townUpgradeButton.disabled = false;
