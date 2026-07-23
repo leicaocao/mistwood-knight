@@ -244,6 +244,13 @@ const townStoneMaterial = new THREE.MeshStandardMaterial({ color: 0x77766f, roug
 const townStoneDarkMaterial = new THREE.MeshStandardMaterial({ color: 0x555a5a, roughness: 0.96 });
 const townBlueMaterial = new THREE.MeshStandardMaterial({ color: 0x255a91, roughness: 0.76 });
 const townGoldMaterial = new THREE.MeshStandardMaterial({ color: 0xd5a83d, roughness: 0.7 });
+const townClockMaterial = new THREE.MeshStandardMaterial({
+  color: 0xe4c365,
+  emissive: 0x4f3308,
+  emissiveIntensity: 0.16,
+  roughness: 0.58,
+  side: THREE.DoubleSide,
+});
 
 function addTownBlock(group, size, position, material = townStoneMaterial) {
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(size.x, size.y, size.z), material);
@@ -254,31 +261,37 @@ function addTownBlock(group, size, position, material = townStoneMaterial) {
   return mesh;
 }
 
-function addTownFoundation(group, width, depth) {
-  addTownBlock(group, new THREE.Vector3(width, 0.5, depth), new THREE.Vector3(0, 0.25, 0));
-  addTownBlock(
-    group,
-    new THREE.Vector3(width - 0.8, 0.34, depth - 0.8),
-    new THREE.Vector3(0, 0.67, 0),
-    townStoneDarkMaterial
+function addTownDisc(group, radius, height, y, material) {
+  const disc = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, height, 48), material);
+  disc.position.y = y;
+  disc.castShadow = true;
+  disc.receiveShadow = true;
+  group.add(disc);
+  return disc;
+}
+
+function addTownFoundation(group, radius) {
+  addTownDisc(group, radius, 0.46, 0.23, townStoneMaterial);
+  addTownDisc(group, radius - 0.5, 0.34, 0.63, townStoneDarkMaterial);
+  addTownDisc(group, radius - 0.92, 0.18, 0.89, townStoneMaterial);
+
+  const rim = new THREE.Mesh(
+    new THREE.TorusGeometry(radius - 0.52, 0.13, 8, 48),
+    townGoldMaterial
   );
+  rim.rotation.x = Math.PI / 2;
+  rim.position.y = 0.82;
+  rim.castShadow = true;
+  group.add(rim);
 
   for (let step = 0; step < 4; step += 1) {
     addTownBlock(
       group,
       new THREE.Vector3(6.2 - step * 0.32, 0.18, 1.35),
-      new THREE.Vector3(0, 0.09 + step * 0.18, -depth / 2 - 0.78 + step * 0.34)
+      new THREE.Vector3(0, 0.09 + step * 0.18, -radius - 0.78 + step * 0.34)
     );
   }
-
-  const cornerX = width / 2 - 0.58;
-  const cornerZ = depth / 2 - 0.58;
-  for (const x of [-cornerX, cornerX]) {
-    for (const z of [-cornerZ, cornerZ]) {
-      addTownBlock(group, new THREE.Vector3(0.95, 1.28, 0.95), new THREE.Vector3(x, 1.14, z));
-    }
-  }
-  return 0.84;
+  return 0.98;
 }
 
 function addTownModel(group, template, targetHeight, x, z, rotation, baseY) {
@@ -308,6 +321,55 @@ function addTownBanner(group, x, z, baseY = 0.84, height = 4.2) {
   group.add(cloth);
 }
 
+function addTownBattlements(group, radius, count, baseY, frontGap = 4.3) {
+  for (let index = 0; index < count; index += 1) {
+    const angle = (index / count) * Math.PI * 2;
+    const x = Math.cos(angle) * (radius - 0.52);
+    const z = Math.sin(angle) * (radius - 0.52);
+    if (z < -radius * 0.72 && Math.abs(x) < frontGap) continue;
+    const block = addTownBlock(
+      group,
+      new THREE.Vector3(1.1, 0.72, 0.62),
+      new THREE.Vector3(x, baseY + 0.36, z),
+      townStoneMaterial
+    );
+    block.rotation.y = -angle;
+  }
+}
+
+function addTownClock(group, radius, y, z) {
+  const clock = new THREE.Group();
+  const face = new THREE.Mesh(new THREE.CircleGeometry(radius, 28), townClockMaterial);
+  face.rotation.y = Math.PI;
+  face.castShadow = true;
+  clock.add(face);
+
+  const rim = new THREE.Mesh(
+    new THREE.TorusGeometry(radius, Math.max(radius * 0.1, 0.07), 8, 28),
+    townGoldMaterial
+  );
+  rim.position.z = -0.035;
+  rim.castShadow = true;
+  clock.add(rim);
+
+  const hourHand = addTownBlock(
+    clock,
+    new THREE.Vector3(radius * 0.12, radius * 0.72, 0.08),
+    new THREE.Vector3(0, radius * 0.23, -0.08),
+    townStoneDarkMaterial
+  );
+  hourHand.rotation.z = 0.42;
+  const minuteHand = addTownBlock(
+    clock,
+    new THREE.Vector3(radius * 0.1, radius * 0.94, 0.07),
+    new THREE.Vector3(-radius * 0.2, radius * 0.13, -0.09),
+    townStoneDarkMaterial
+  );
+  minuteHand.rotation.z = -0.9;
+  clock.position.set(0, y, z);
+  group.add(clock);
+}
+
 async function createTownCenter() {
   const loadedAssets = await Promise.all([
     loadGLTF("./models/town/building_barracks_blue.gltf"),
@@ -319,46 +381,54 @@ async function createTownCenter() {
   ]);
   const [barracks, castle, tavern, church, towerA, towerB] = loadedAssets.map((asset) => asset.scene);
   const root = new THREE.Group();
-  const collisionRadii = [8.4, 10.1, 11.8];
+  const collisionRadii = [8.5, 10.6, 12.9];
+  const cameraScales = [1, 1.15, 1.38];
   const levelNames = ["Ⅰ · 人族城镇大厅", "Ⅱ · 人族要塞", "Ⅲ · 人族主城堡"];
   const stages = [];
 
   const townHall = new THREE.Group();
-  const hallBaseY = addTownFoundation(townHall, 16, 11.5);
-  addTownModel(townHall, barracks, 8.2, 0, 0.6, 0, hallBaseY);
-  addTownModel(townHall, tavern, 5.5, -4.65, 1.2, 0, hallBaseY);
-  addTownModel(townHall, tavern, 5.5, 4.65, 1.2, 0, hallBaseY);
-  addTownModel(townHall, towerB, 7.1, -6.4, -2.55, 0, hallBaseY);
-  addTownModel(townHall, towerB, 7.1, 6.4, -2.55, 0, hallBaseY);
-  addTownBanner(townHall, -2.75, -5.1, hallBaseY, 4.35);
-  addTownBanner(townHall, 2.75, -5.1, hallBaseY, 4.35);
+  const hallBaseY = addTownFoundation(townHall, 8.1);
+  addTownModel(townHall, barracks, 7.8, 0, 0.7, 0, hallBaseY);
+  addTownModel(townHall, tavern, 4.9, -4.35, 1.55, 0, hallBaseY);
+  addTownModel(townHall, tavern, 4.9, 4.35, 1.55, 0, hallBaseY);
+  addTownModel(townHall, towerB, 6.45, -5.85, -2.3, 0, hallBaseY);
+  addTownModel(townHall, towerB, 6.45, 5.85, -2.3, 0, hallBaseY);
+  addTownClock(townHall, 0.64, 5.25, -2.65);
+  addTownBanner(townHall, -2.65, -6.05, hallBaseY, 4.15);
+  addTownBanner(townHall, 2.65, -6.05, hallBaseY, 4.15);
   stages.push(townHall);
 
   const keep = new THREE.Group();
-  const keepBaseY = addTownFoundation(keep, 19, 14);
-  addTownModel(keep, castle, 9.4, 0, 0.7, 0, keepBaseY);
-  addTownModel(keep, tavern, 6.1, -5.55, 1.35, 0, keepBaseY);
-  addTownModel(keep, tavern, 6.1, 5.55, 1.35, 0, keepBaseY);
-  addTownModel(keep, towerB, 8.25, -7.65, -3.85, 0, keepBaseY);
-  addTownModel(keep, towerB, 8.25, 7.65, -3.85, 0, keepBaseY);
-  addTownModel(keep, towerA, 7.65, -7.45, 4.15, 0, keepBaseY);
-  addTownModel(keep, towerA, 7.65, 7.45, 4.15, 0, keepBaseY);
-  addTownBanner(keep, -3.15, -6.35, keepBaseY, 5.2);
-  addTownBanner(keep, 3.15, -6.35, keepBaseY, 5.2);
+  const keepBaseY = addTownFoundation(keep, 10.15);
+  addTownBattlements(keep, 10.15, 22, keepBaseY, 4.1);
+  addTownModel(keep, castle, 10.35, 0, 0.7, 0, keepBaseY);
+  addTownModel(keep, tavern, 5.9, -5.4, 1.5, 0, keepBaseY);
+  addTownModel(keep, tavern, 5.9, 5.4, 1.5, 0, keepBaseY);
+  addTownModel(keep, towerB, 8.35, -7.55, -4.1, 0, keepBaseY);
+  addTownModel(keep, towerB, 8.35, 7.55, -4.1, 0, keepBaseY);
+  addTownModel(keep, towerA, 7.8, -7.7, 4.4, 0, keepBaseY);
+  addTownModel(keep, towerA, 7.8, 7.7, 4.4, 0, keepBaseY);
+  addTownClock(keep, 0.83, 6.5, -3.25);
+  addTownBanner(keep, -3.15, -8.15, keepBaseY, 5.4);
+  addTownBanner(keep, 3.15, -8.15, keepBaseY, 5.4);
   stages.push(keep);
 
   const castleHall = new THREE.Group();
-  const castleBaseY = addTownFoundation(castleHall, 22, 16.5);
-  addTownModel(castleHall, church, 9.1, 0, 4.2, 0, castleBaseY);
-  addTownModel(castleHall, castle, 11.2, 0, 0.25, 0, castleBaseY);
-  addTownModel(castleHall, tavern, 6.8, -6.1, 1.5, 0, castleBaseY);
-  addTownModel(castleHall, tavern, 6.8, 6.1, 1.5, 0, castleBaseY);
-  for (const x of [-8.8, 8.8]) {
-    addTownModel(castleHall, towerA, 10.2, x, -4.9, 0, castleBaseY);
-    addTownModel(castleHall, towerB, 9.6, x, 5.0, 0, castleBaseY);
-  }
-  addTownBanner(castleHall, -3.45, -7.55, castleBaseY, 6.1);
-  addTownBanner(castleHall, 3.45, -7.55, castleBaseY, 6.1);
+  const castleBaseY = addTownFoundation(castleHall, 12.35);
+  addTownBattlements(castleHall, 12.35, 28, castleBaseY, 4.4);
+  addTownModel(castleHall, church, 11.4, 0, 4.35, 0, castleBaseY);
+  addTownModel(castleHall, castle, 12.65, 0, 0.15, 0, castleBaseY);
+  addTownModel(castleHall, tavern, 7.1, -6.35, 1.45, 0, castleBaseY);
+  addTownModel(castleHall, tavern, 7.1, 6.35, 1.45, 0, castleBaseY);
+  addTownModel(castleHall, towerA, 10.75, -8.5, -5.15, 0, castleBaseY);
+  addTownModel(castleHall, towerA, 10.75, 8.5, -5.15, 0, castleBaseY);
+  addTownModel(castleHall, towerB, 9.85, -10.1, 1.45, 0, castleBaseY);
+  addTownModel(castleHall, towerB, 9.85, 10.1, 1.45, 0, castleBaseY);
+  addTownModel(castleHall, towerA, 9.35, -7.2, 7.25, 0, castleBaseY);
+  addTownModel(castleHall, towerA, 9.35, 7.2, 7.25, 0, castleBaseY);
+  addTownClock(castleHall, 1.05, 7.85, -3.85);
+  addTownBanner(castleHall, -3.55, -10.2, castleBaseY, 6.6);
+  addTownBanner(castleHall, 3.55, -10.2, castleBaseY, 6.6);
   stages.push(castleHall);
 
   stages.forEach((stage, index) => {
@@ -400,6 +470,7 @@ async function createTownCenter() {
     warmLight,
     upgrade,
     get collisionRadius() { return collisionRadii[level]; },
+    get cameraScale() { return cameraScales[level]; },
     get levelName() { return levelNames[level]; },
   };
 }
@@ -909,9 +980,12 @@ function tick(time) {
       knight.root.position.z *= 41 / distance;
     }
 
-    cameraGoal.copy(knight.root.position).add(cameraOffset);
+    cameraGoal.copy(knight.root.position).addScaledVector(cameraOffset, townCenter?.cameraScale ?? 1);
     camera.position.lerp(cameraGoal, 1 - Math.exp(-delta * 4.7));
-    lookGoal.copy(knight.root.position).add(lookLift).add(lookAhead);
+    lookGoal
+      .copy(knight.root.position)
+      .add(lookLift)
+      .addScaledVector(lookAhead, townCenter?.cameraScale ?? 1);
     camera.lookAt(lookGoal);
   }
 
