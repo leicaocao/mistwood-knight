@@ -152,7 +152,17 @@ const isInsideBuildPlotClearing = (x, z) =>
   buildPlotPositions.some((position) => Math.hypot(x - position.x, z - position.z) < 7.2);
 const isInsideCityStreet = (x, z) =>
   (Math.abs(Math.abs(x) - 19.4) < 3.25 && Math.abs(z) < 27) ||
-  (Math.abs(Math.abs(z) - 19.4) < 3.25 && Math.abs(x) < 27);
+  (Math.abs(Math.abs(z) - 19.4) < 3.25 && Math.abs(x) < 27) ||
+  (Math.abs(x) < 3.25 && Math.abs(z) > 21.5 && Math.abs(z) < 41) ||
+  (Math.abs(z) < 3.25 && Math.abs(x) > 21.5 && Math.abs(x) < 41);
+const cityWallHalfExtent = 37;
+const cityWallThickness = 1.55;
+const cityGateOpeningHalf = 3.55;
+const isInsideWalledCity = (x, z) =>
+  Math.abs(x) < cityWallHalfExtent - 0.7 && Math.abs(z) < cityWallHalfExtent - 0.7;
+const isInsideCityWallStructure = (x, z) =>
+  (Math.abs(Math.abs(x) - cityWallHalfExtent) < 3.2 && Math.abs(z) < cityWallHalfExtent + 3.2) ||
+  (Math.abs(Math.abs(z) - cityWallHalfExtent) < 3.2 && Math.abs(x) < cityWallHalfExtent + 3.2);
 
 const cityStreetMaterial = new THREE.MeshStandardMaterial({ color: 0x9c9077, roughness: 0.98 });
 const cityCurbMaterial = new THREE.MeshStandardMaterial({ color: 0x6e6b62, roughness: 0.96 });
@@ -200,6 +210,24 @@ for (const x of [-19.4, 19.4]) {
   }
 }
 
+for (const side of [-1, 1]) {
+  const northSouthRoad = new THREE.Mesh(
+    new THREE.BoxGeometry(5.35, 0.055, 18.6),
+    cityStreetMaterial
+  );
+  northSouthRoad.position.set(0, 0.062, side * 31.25);
+  northSouthRoad.receiveShadow = true;
+  cityStreetGroup.add(northSouthRoad);
+
+  const eastWestRoad = new THREE.Mesh(
+    new THREE.BoxGeometry(18.6, 0.055, 5.35),
+    cityStreetMaterial
+  );
+  eastWestRoad.position.set(side * 31.25, 0.062, 0);
+  eastWestRoad.receiveShadow = true;
+  cityStreetGroup.add(eastWestRoad);
+}
+
 const cityPaverTransforms = [];
 for (const z of [-19.4, 19.4]) {
   for (let row = -1; row <= 1; row += 1) {
@@ -215,6 +243,15 @@ for (const x of [-19.4, 19.4]) {
     for (let z = -24.5 + stagger; z <= 24.5; z += 1.62) {
       if (Math.abs(Math.abs(z) - 19.4) < 3.15) continue;
       cityPaverTransforms.push({ x: x + row * 1.62, z, rotation: Math.PI / 2 });
+    }
+  }
+}
+for (const side of [-1, 1]) {
+  for (let row = -1; row <= 1; row += 1) {
+    const stagger = row === 0 ? 0.8 : 0;
+    for (let distance = 22.65 + stagger; distance <= 39.35; distance += 1.62) {
+      cityPaverTransforms.push({ x: row * 1.62, z: side * distance, rotation: Math.PI / 2 });
+      cityPaverTransforms.push({ x: side * distance, z: row * 1.62, rotation: 0 });
     }
   }
 }
@@ -311,13 +348,173 @@ function addCityStreetLamp(x, z) {
   cityStreetGroup.add(lamp);
 }
 
-for (const position of [-17, 0, 17]) {
-  addCityStreetLamp(position, -22.48);
-  addCityStreetLamp(position, 22.48);
-  addCityStreetLamp(-22.48, position);
-  addCityStreetLamp(22.48, position);
+for (const position of [-12, 0, 12]) {
+  addCityStreetLamp(position, -16.05);
+  addCityStreetLamp(position, 16.05);
+  addCityStreetLamp(-16.05, position);
+  addCityStreetLamp(16.05, position);
 }
 scene.add(cityStreetGroup);
+
+const cityWallMaterial = new THREE.MeshStandardMaterial({ color: 0x9b927f, roughness: 0.95 });
+const cityWallTrimMaterial = new THREE.MeshStandardMaterial({ color: 0x6f6b63, roughness: 0.9 });
+const cityWallRoofMaterial = new THREE.MeshStandardMaterial({
+  color: 0x334756,
+  roughness: 0.82,
+  metalness: 0.12,
+});
+const cityGateWoodMaterial = new THREE.MeshStandardMaterial({ color: 0x55402f, roughness: 0.9 });
+const cityWallGroup = new THREE.Group();
+
+function addCityWallSegment(x, z, width, depth) {
+  const segment = new THREE.Group();
+  segment.position.set(x, 0, z);
+  const wall = new THREE.Mesh(
+    new THREE.BoxGeometry(width, 3.4, depth),
+    cityWallMaterial
+  );
+  wall.position.y = 1.7;
+  wall.castShadow = true;
+  wall.receiveShadow = true;
+  segment.add(wall);
+
+  const trim = new THREE.Mesh(
+    new THREE.BoxGeometry(width + 0.18, 0.26, depth + 0.18),
+    cityWallTrimMaterial
+  );
+  trim.position.y = 3.4;
+  trim.castShadow = true;
+  segment.add(trim);
+
+  const horizontal = width > depth;
+  const length = horizontal ? width : depth;
+  const count = Math.max(2, Math.floor(length / 2.05));
+  for (let index = 0; index < count; index += 1) {
+    const along = -length / 2 + ((index + 0.5) * length) / count;
+    const merlon = new THREE.Mesh(
+      new THREE.BoxGeometry(horizontal ? 1.05 : 1.7, 0.74, horizontal ? 1.7 : 1.05),
+      cityWallMaterial
+    );
+    merlon.position.set(horizontal ? along : 0, 3.85, horizontal ? 0 : along);
+    merlon.castShadow = true;
+    merlon.receiveShadow = true;
+    segment.add(merlon);
+  }
+  cityWallGroup.add(segment);
+}
+
+const cityWallSegmentLength = 30.6;
+const cityWallSegmentOffset = 19.9;
+for (const side of [-1, 1]) {
+  addCityWallSegment(-cityWallSegmentOffset, side * cityWallHalfExtent, cityWallSegmentLength, cityWallThickness);
+  addCityWallSegment(cityWallSegmentOffset, side * cityWallHalfExtent, cityWallSegmentLength, cityWallThickness);
+  addCityWallSegment(side * cityWallHalfExtent, -cityWallSegmentOffset, cityWallThickness, cityWallSegmentLength);
+  addCityWallSegment(side * cityWallHalfExtent, cityWallSegmentOffset, cityWallThickness, cityWallSegmentLength);
+}
+
+function addCityCornerTower(x, z) {
+  const tower = new THREE.Group();
+  tower.position.set(x, 0, z);
+
+  const body = new THREE.Mesh(
+    new THREE.CylinderGeometry(2.25, 2.5, 5.25, 8),
+    cityWallMaterial
+  );
+  body.position.y = 2.62;
+  body.castShadow = true;
+  body.receiveShadow = true;
+  tower.add(body);
+
+  const band = new THREE.Mesh(
+    new THREE.CylinderGeometry(2.5, 2.5, 0.32, 8),
+    cityWallTrimMaterial
+  );
+  band.position.y = 4.95;
+  band.castShadow = true;
+  tower.add(band);
+
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(2.85, 2.35, 8), cityWallRoofMaterial);
+  roof.position.y = 6.2;
+  roof.rotation.y = Math.PI / 8;
+  roof.castShadow = true;
+  roof.receiveShadow = true;
+  tower.add(roof);
+
+  const arrowSlitMaterial = new THREE.MeshBasicMaterial({ color: 0x202629 });
+  for (const angle of [0, Math.PI / 2, Math.PI, Math.PI * 1.5]) {
+    const slit = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.72, 0.06), arrowSlitMaterial);
+    slit.position.set(Math.sin(angle) * 2.22, 3.25, Math.cos(angle) * 2.22);
+    slit.rotation.y = angle;
+    tower.add(slit);
+  }
+  cityWallGroup.add(tower);
+}
+
+for (const x of [-36.7, 36.7]) {
+  for (const z of [-36.7, 36.7]) addCityCornerTower(x, z);
+}
+
+function addCityGatehouse(x, z, rotation) {
+  const gatehouse = new THREE.Group();
+  gatehouse.position.set(x, 0, z);
+  gatehouse.rotation.y = rotation;
+
+  for (const side of [-1, 1]) {
+    const tower = new THREE.Mesh(
+      new THREE.BoxGeometry(2.55, 5.35, 2.75),
+      cityWallMaterial
+    );
+    tower.position.set(side * 4.9, 2.68, 0);
+    tower.castShadow = true;
+    tower.receiveShadow = true;
+    gatehouse.add(tower);
+
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(2.05, 2.15, 4), cityWallRoofMaterial);
+    roof.position.set(side * 4.9, 6.25, 0);
+    roof.rotation.y = Math.PI / 4;
+    roof.castShadow = true;
+    gatehouse.add(roof);
+
+    const openGate = new THREE.Mesh(
+      new THREE.BoxGeometry(0.22, 3.15, 2.75),
+      cityGateWoodMaterial
+    );
+    openGate.position.set(side * 3.65, 1.58, -side * 1.45);
+    openGate.castShadow = true;
+    gatehouse.add(openGate);
+  }
+
+  const lintel = new THREE.Mesh(
+    new THREE.BoxGeometry(7.35, 1.05, 1.95),
+    cityWallMaterial
+  );
+  lintel.position.y = 4.56;
+  lintel.castShadow = true;
+  lintel.receiveShadow = true;
+  gatehouse.add(lintel);
+
+  const lintelTrim = new THREE.Mesh(
+    new THREE.BoxGeometry(7.65, 0.24, 2.12),
+    cityWallTrimMaterial
+  );
+  lintelTrim.position.y = 5.16;
+  lintelTrim.castShadow = true;
+  gatehouse.add(lintelTrim);
+
+  for (const xOffset of [-2.75, -0.9, 0.9, 2.75]) {
+    const merlon = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.68, 2.05), cityWallMaterial);
+    merlon.position.set(xOffset, 5.55, 0);
+    merlon.castShadow = true;
+    gatehouse.add(merlon);
+  }
+  cityWallGroup.add(gatehouse);
+}
+
+addCityGatehouse(0, -cityWallHalfExtent, 0);
+addCityGatehouse(0, cityWallHalfExtent, 0);
+addCityGatehouse(-cityWallHalfExtent, 0, Math.PI / 2);
+addCityGatehouse(cityWallHalfExtent, 0, Math.PI / 2);
+scene.add(cityWallGroup);
 
 const manager = new THREE.LoadingManager();
 manager.onProgress = (_url, loaded, total) => {
@@ -1415,7 +1612,12 @@ function populateForest(templates) {
     const z = Math.sin(angle) * radius;
     if (Math.abs(x) < 5.2) x += x < 0 ? -7.2 : 7.2;
     if (z > 6 && Math.abs(x) < 12) x += x < 0 ? -12 : 12;
-    if (isInsideBuildPlotClearing(x, z) || isInsideCityStreet(x, z)) continue;
+    if (
+      isInsideWalledCity(x, z) ||
+      isInsideCityWallStructure(x, z) ||
+      isInsideBuildPlotClearing(x, z) ||
+      isInsideCityStreet(x, z)
+    ) continue;
     placeModel(
       templates.trees[index % templates.trees.length],
       x,
@@ -1433,7 +1635,12 @@ function populateForest(templates) {
     let x = Math.cos(angle) * radius;
     const z = Math.sin(angle) * radius;
     if (Math.abs(x) < 4.8) x += x < 0 ? -6.2 : 6.2;
-    if (isInsideBuildPlotClearing(x, z) || isInsideCityStreet(x, z)) continue;
+    if (
+      isInsideWalledCity(x, z) ||
+      isInsideCityWallStructure(x, z) ||
+      isInsideBuildPlotClearing(x, z) ||
+      isInsideCityStreet(x, z)
+    ) continue;
     placeModel(
       isBush ? templates.bush : templates.rock,
       x,
@@ -1467,6 +1674,12 @@ const dayCityCurbColor = new THREE.Color(0x6e6b62);
 const nightCityCurbColor = new THREE.Color(0x34383c);
 const dayCityPaverColor = new THREE.Color(0xb7ab92);
 const nightCityPaverColor = new THREE.Color(0x555159);
+const dayCityWallColor = new THREE.Color(0x9b927f);
+const nightCityWallColor = new THREE.Color(0x41434a);
+const dayCityWallTrimColor = new THREE.Color(0x6f6b63);
+const nightCityWallTrimColor = new THREE.Color(0x2f3338);
+const dayCityWallRoofColor = new THREE.Color(0x334756);
+const nightCityWallRoofColor = new THREE.Color(0x182331);
 
 function showThreat(text) {
   threatBanner.textContent = text;
@@ -1511,6 +1724,9 @@ function updateDayNight(delta) {
   cityStreetMaterial.color.lerpColors(dayCityStreetColor, nightCityStreetColor, nightFactor);
   cityCurbMaterial.color.lerpColors(dayCityCurbColor, nightCityCurbColor, nightFactor);
   cityPaverMaterial.color.lerpColors(dayCityPaverColor, nightCityPaverColor, nightFactor);
+  cityWallMaterial.color.lerpColors(dayCityWallColor, nightCityWallColor, nightFactor);
+  cityWallTrimMaterial.color.lerpColors(dayCityWallTrimColor, nightCityWallTrimColor, nightFactor);
+  cityWallRoofMaterial.color.lerpColors(dayCityWallRoofColor, nightCityWallRoofColor, nightFactor);
   cityLampGlassMaterial.emissiveIntensity = 0.18 + nightFactor * 4.5;
   for (const light of cityStreetLights) light.intensity = 0.1 + nightFactor * 7.5;
   if (townCenter) {
@@ -1668,6 +1884,58 @@ function resolveBuildPlotCollisions(position, padding = 0) {
   return buildSystem?.resolveCollision(position, padding) ?? false;
 }
 
+function resolveCityWallCollision(position, padding = 0) {
+  const collisionBand = cityWallThickness / 2 + padding;
+  const gatePassageHalf = Math.max(1.8, cityGateOpeningHalf - padding);
+  const wallReach = cityWallHalfExtent + 2.8;
+  let collided = false;
+
+  if (
+    Math.abs(Math.abs(position.x) - cityWallHalfExtent) < collisionBand &&
+    Math.abs(position.z) < wallReach &&
+    Math.abs(position.z) > gatePassageHalf
+  ) {
+    const side = Math.sign(position.x) || 1;
+    const edge = Math.abs(position.x) < cityWallHalfExtent
+      ? cityWallHalfExtent - collisionBand
+      : cityWallHalfExtent + collisionBand;
+    position.x = side * edge;
+    collided = true;
+  }
+
+  if (
+    Math.abs(Math.abs(position.z) - cityWallHalfExtent) < collisionBand &&
+    Math.abs(position.x) < wallReach &&
+    Math.abs(position.x) > gatePassageHalf
+  ) {
+    const side = Math.sign(position.z) || 1;
+    const edge = Math.abs(position.z) < cityWallHalfExtent
+      ? cityWallHalfExtent - collisionBand
+      : cityWallHalfExtent + collisionBand;
+    position.z = side * edge;
+    collided = true;
+  }
+
+  for (const x of [-36.7, 36.7]) {
+    for (const z of [-36.7, 36.7]) {
+      const offsetX = position.x - x;
+      const offsetZ = position.z - z;
+      const distance = Math.hypot(offsetX, offsetZ);
+      const minimumDistance = 2.45 + padding;
+      if (distance >= minimumDistance) continue;
+      if (distance < 0.001) {
+        position.x = x + minimumDistance;
+      } else {
+        const scale = minimumDistance / distance;
+        position.x = x + offsetX * scale;
+        position.z = z + offsetZ * scale;
+      }
+      collided = true;
+    }
+  }
+  return collided;
+}
+
 function upgradeTownCenter() {
   if (!townCenter || !townCenter.upgrade()) return;
   resolveTownCenterCollision(knight.root.position, 0.72);
@@ -1713,7 +1981,8 @@ function tick(time) {
     knight.root.position.addScaledVector(velocity, delta);
     const hitTownCenter = resolveTownCenterCollision(knight.root.position, 0.72);
     const hitBuiltPlot = resolveBuildPlotCollisions(knight.root.position, 0.72);
-    if (hitTownCenter || hitBuiltPlot) velocity.multiplyScalar(0.2);
+    const hitCityWall = resolveCityWallCollision(knight.root.position, 0.72);
+    if (hitTownCenter || hitBuiltPlot || hitCityWall) velocity.multiplyScalar(0.2);
     buildSystem?.update(knight.root.position, delta, time);
     const distance = Math.hypot(knight.root.position.x, knight.root.position.z);
     if (distance > 108) {
