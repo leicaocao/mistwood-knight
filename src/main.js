@@ -104,7 +104,7 @@ clearing.receiveShadow = true;
 scene.add(clearing);
 
 const townSquareMaterial = new THREE.MeshStandardMaterial({ color: 0xa99a78, roughness: 1 });
-const townSquare = new THREE.Mesh(new THREE.CircleGeometry(7.5, 48), townSquareMaterial);
+const townSquare = new THREE.Mesh(new THREE.CircleGeometry(10.2, 56), townSquareMaterial);
 townSquare.rotation.x = -Math.PI / 2;
 townSquare.position.y = 0.035;
 townSquare.receiveShadow = true;
@@ -157,7 +157,7 @@ async function createKnightRig() {
   const scaledBox = new THREE.Box3().setFromObject(model);
   model.position.y -= scaledBox.min.y;
 
-  root.position.set(0, 0, 8.2);
+  root.position.set(0, 0, 12.4);
   root.rotation.y = Math.PI;
 
   const clips = [...generalAnimations.animations, ...movementAnimations.animations, ...combatAnimations.animations];
@@ -247,8 +247,8 @@ async function createTownCenter() {
     loadGLTF("./models/town/building_castle_blue.gltf"),
   ]);
   const root = new THREE.Group();
-  const targetHeights = [3.25, 4.45, 6.2];
-  const collisionRadii = [2.6, 3.25, 5.05];
+  const targetHeights = [5.1, 6.8, 7.4];
+  const collisionRadii = [3.75, 4.9, 5.75];
   const levelNames = ["Ⅰ · 简易大厅", "Ⅱ · 加固市政厅", "Ⅲ · 城堡大厅"];
   const models = assets.map((asset, index) => {
     const model = asset.scene;
@@ -461,7 +461,7 @@ function populateForest(templates) {
 
   for (let index = 0; index < 72; index += 1) {
     const angle = random() * Math.PI * 2;
-    const radius = 18 + random() * 26;
+    const radius = 22 + random() * 22;
     let x = Math.cos(angle) * radius;
     const z = Math.sin(angle) * radius;
     if (Math.abs(x) < 4.2) x += x < 0 ? -5.2 : 5.2;
@@ -479,7 +479,7 @@ function populateForest(templates) {
   for (let index = 0; index < 86; index += 1) {
     const isBush = random() > 0.36;
     const angle = random() * Math.PI * 2;
-    const radius = 13 + random() * 30;
+    const radius = 16 + random() * 27;
     let x = Math.cos(angle) * radius;
     const z = Math.sin(angle) * radius;
     if (Math.abs(x) < 3.6) x += x < 0 ? -4.6 : 4.6;
