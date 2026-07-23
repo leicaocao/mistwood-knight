@@ -6,8 +6,8 @@
     <meta name="theme-color" content="#142b22" />
     <meta name="description" content="雾林骑士：一个可移动骑士与低多边形森林的 Three.js 测试场景。" />
     <title>雾林骑士</title>
-    <link rel="stylesheet" href="./styles.css?v=5" />
-    <script defer src="./game.js?v=16"></script>
+    <link rel="stylesheet" href="./styles.css?v=6" />
+    <script defer src="./game.js?v=17"></script>
   </head>
   <body>
     <main class="game-shell">
@@ -35,6 +35,25 @@
         <small id="town-action">U · 升级</small>
       </button>
 
+      <aside id="build-panel" class="build-panel" aria-hidden="true">
+        <div class="build-panel-heading">
+          <span>建筑地块</span>
+          <strong id="build-plot-title">空闲地块</strong>
+        </div>
+        <div id="build-options" class="build-options">
+          <button type="button" data-building="barracks"><kbd>1</kbd><span>兵营</span></button>
+          <button type="button" data-building="blacksmith"><kbd>2</kbd><span>铁匠铺</span></button>
+          <button type="button" data-building="archery"><kbd>3</kbd><span>箭术场</span></button>
+          <button type="button" data-building="market"><kbd>4</kbd><span>市场</span></button>
+          <button type="button" data-building="church"><kbd>5</kbd><span>教堂</span></button>
+          <button type="button" data-building="home"><kbd>6</kbd><span>住宅</span></button>
+          <button type="button" data-building="lumbermill"><kbd>7</kbd><span>伐木场</span></button>
+          <button type="button" data-building="tower"><kbd>8</kbd><span>防御塔</span></button>
+        </div>
+        <button id="demolish-building" class="demolish-building" type="button">拆除并重建</button>
+        <small id="build-hint">点击或靠近圆形地块后选择建筑</small>
+      </aside>
+
       <aside class="instructions">
         <p>探索林间空地</p>
         <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><span>移动</span></div>
@@ -42,6 +61,7 @@
         <div><kbd>N</kbd><span>切换昼夜</span></div>
         <div><kbd>J</kbd><span>攻击 / 左键</span></div>
         <div><kbd>U</kbd><span>升级城镇中心</span></div>
+        <div><kbd>1-8</kbd><span>建造建筑</span></div>
       </aside>
 
       <div id="loading" class="loading" role="status">

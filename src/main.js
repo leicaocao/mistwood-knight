@@ -16,6 +16,10 @@ const attackButton = document.querySelector("#attack-button");
 const townUpgradeButton = document.querySelector("#town-upgrade");
 const townLevelLabel = document.querySelector("#town-level");
 const townActionLabel = document.querySelector("#town-action");
+const buildPanel = document.querySelector("#build-panel");
+const buildPlotTitle = document.querySelector("#build-plot-title");
+const buildHint = document.querySelector("#build-hint");
+const demolishBuildingButton = document.querySelector("#demolish-building");
 const keys = { forward: false, back: false, left: false, right: false, run: false };
 
 function seededRandom(seed) {
@@ -133,6 +137,13 @@ function addPlazaStoneRing(radius, count, width) {
 
 addPlazaStoneRing(13.85, 44, 1.48);
 addPlazaStoneRing(15.45, 52, 1.34);
+
+const buildPlotPositions = Array.from({ length: 8 }, (_, index) => {
+  const angle = Math.PI / 8 + index * Math.PI / 4;
+  return new THREE.Vector3(Math.cos(angle) * 32, 0, Math.sin(angle) * 32);
+});
+const isInsideBuildPlotClearing = (x, z) =>
+  buildPlotPositions.some((position) => Math.hypot(x - position.x, z - position.z) < 7.2);
 
 const manager = new THREE.LoadingManager();
 manager.onProgress = (_url, loaded, total) => {
@@ -912,6 +923,266 @@ async function createTownCenter() {
   };
 }
 
+async function createBuildSystem() {
+  const optionSpecs = [
+    { id: "barracks", label: "兵营", url: "./models/town/building_barracks_blue.gltf", height: 6.3, radius: 3.45 },
+    { id: "blacksmith", label: "铁匠铺", url: "./models/town/building_blacksmith_blue.gltf", height: 5.25, radius: 3.1 },
+    { id: "archery", label: "箭术场", url: "./models/town/building_archeryrange_blue.gltf", height: 5.8, radius: 3.3 },
+    { id: "market", label: "市场", url: "./models/town/building_market_blue.gltf", height: 5.35, radius: 3.35 },
+    { id: "church", label: "教堂", url: "./models/town/building_church_blue.gltf", height: 7.2, radius: 3.25 },
+    { id: "home", label: "住宅", url: "./models/town/building_home_A_blue.gltf", height: 5.05, radius: 2.85 },
+    { id: "lumbermill", label: "伐木场", url: "./models/town/building_lumbermill_blue.gltf", height: 5.45, radius: 3.35 },
+    { id: "tower", label: "防御塔", url: "./models/town/building_tower_B_blue.gltf", height: 7.35, radius: 2.7 },
+  ];
+  const loaded = await Promise.all(optionSpecs.map((spec) => loadGLTF(spec.url)));
+  const definitions = new Map(
+    optionSpecs.map((spec, index) => [spec.id, { ...spec, template: loaded[index].scene }])
+  );
+
+  const root = new THREE.Group();
+  const plotFloorMaterial = new THREE.MeshStandardMaterial({
+    color: 0x718b83,
+    transparent: true,
+    opacity: 0.42,
+    roughness: 0.95,
+  });
+  const plotRingMaterial = new THREE.MeshStandardMaterial({
+    color: 0x6ec5e2,
+    emissive: 0x153e54,
+    emissiveIntensity: 0.42,
+    roughness: 0.65,
+  });
+  const plotStoneMaterial = new THREE.MeshStandardMaterial({ color: 0x8a887e, roughness: 0.95 });
+  const beaconMaterial = new THREE.MeshBasicMaterial({
+    color: 0x91e4ff,
+    transparent: true,
+    opacity: 0.82,
+    depthWrite: false,
+  });
+  const plots = [];
+  const plotSurfaces = [];
+  const raycaster = new THREE.Raycaster();
+  const pointer = new THREE.Vector2();
+
+  for (let index = 0; index < buildPlotPositions.length; index += 1) {
+    const plotRoot = new THREE.Group();
+    plotRoot.position.copy(buildPlotPositions[index]);
+
+    const foundation = new THREE.Mesh(new THREE.CylinderGeometry(4.35, 4.35, 0.12, 40), plotFloorMaterial.clone());
+    foundation.position.y = 0.06;
+    foundation.receiveShadow = true;
+    foundation.userData.buildPlotIndex = index;
+    plotRoot.add(foundation);
+    plotSurfaces.push(foundation);
+
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(4.16, 0.13, 8, 48), plotRingMaterial.clone());
+    ring.rotation.x = Math.PI / 2;
+    ring.position.y = 0.16;
+    ring.castShadow = true;
+    plotRoot.add(ring);
+
+    for (let stoneIndex = 0; stoneIndex < 12; stoneIndex += 1) {
+      const angle = (stoneIndex / 12) * Math.PI * 2;
+      const stone = new THREE.Mesh(new THREE.BoxGeometry(0.78, 0.18, 0.44), plotStoneMaterial);
+      stone.position.set(Math.cos(angle) * 3.72, 0.14, Math.sin(angle) * 3.72);
+      stone.rotation.y = -angle;
+      stone.castShadow = true;
+      stone.receiveShadow = true;
+      plotRoot.add(stone);
+    }
+
+    const marker = new THREE.Group();
+    const crossA = new THREE.Mesh(new THREE.BoxGeometry(2.25, 0.08, 0.28), plotRingMaterial);
+    crossA.position.y = 0.18;
+    marker.add(crossA);
+    const crossB = crossA.clone();
+    crossB.rotation.y = Math.PI / 2;
+    marker.add(crossB);
+    const beacon = new THREE.Mesh(new THREE.OctahedronGeometry(0.36, 0), beaconMaterial);
+    beacon.position.y = 1.05;
+    marker.add(beacon);
+    plotRoot.add(marker);
+
+    const buildingGroup = new THREE.Group();
+    plotRoot.add(buildingGroup);
+    root.add(plotRoot);
+    plots.push({
+      index,
+      root: plotRoot,
+      foundation,
+      ring,
+      marker,
+      beacon,
+      buildingGroup,
+      builtType: null,
+      collisionRadius: 0,
+      buildProgress: 1,
+    });
+  }
+
+  let activePlot = null;
+  let selectionPinned = false;
+  const storageKey = "mistwood-build-plots-v1";
+
+  const persist = () => {
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(plots.map((plot) => plot.builtType)));
+    } catch {
+      // Persistence is optional; building remains available for the current session.
+    }
+  };
+
+  const refreshPanel = () => {
+    const visible = Boolean(activePlot);
+    buildPanel.classList.toggle("show", visible);
+    buildPanel.setAttribute("aria-hidden", String(!visible));
+    if (!activePlot) return;
+    const definition = activePlot.builtType ? definitions.get(activePlot.builtType) : null;
+    buildPanel.classList.toggle("built", Boolean(definition));
+    buildPlotTitle.textContent = definition
+      ? `地块 ${activePlot.index + 1} · ${definition.label}`
+      : `地块 ${activePlot.index + 1} · 空闲`;
+    buildHint.textContent = definition
+      ? "可拆除当前建筑并重新选择"
+      : "点击建筑，或按数字键 1-8 建造";
+  };
+
+  const buildOnPlot = (plot, typeId, animate = true, shouldPersist = true) => {
+    const definition = definitions.get(typeId);
+    if (!plot || !definition || plot.builtType) return false;
+    const model = definition.template.clone(true);
+    fitModelToHeight(model, definition.height);
+    model.rotation.y = Math.atan2(plot.root.position.x, plot.root.position.z) + Math.PI;
+    model.position.y += 0.14;
+    setShadows(model);
+    plot.buildingGroup.add(model);
+    plot.buildingGroup.scale.setScalar(animate ? 0.72 : 1);
+    plot.buildProgress = animate ? 0 : 1;
+    plot.builtType = typeId;
+    plot.collisionRadius = definition.radius;
+    plot.marker.visible = false;
+    plot.foundation.material.color.setHex(0x858077);
+    plot.ring.material.color.setHex(0xd3b65c);
+    if (animate) showThreat(`${definition.label} · 建造完成`);
+    if (shouldPersist) persist();
+    if (plot === activePlot) refreshPanel();
+    return true;
+  };
+
+  const build = (typeId) => {
+    if (!activePlot || activePlot.builtType) return false;
+    if (!buildOnPlot(activePlot, typeId)) return false;
+    resolveBuildPlotCollisions(knight?.root.position, 0.72);
+    return true;
+  };
+
+  const demolish = () => {
+    if (!activePlot?.builtType) return false;
+    const removedName = definitions.get(activePlot.builtType)?.label ?? "建筑";
+    activePlot.buildingGroup.clear();
+    activePlot.builtType = null;
+    activePlot.collisionRadius = 0;
+    activePlot.marker.visible = true;
+    activePlot.foundation.material.color.setHex(0x718b83);
+    activePlot.ring.material.color.setHex(0x6ec5e2);
+    persist();
+    refreshPanel();
+    showThreat(`${removedName} · 已拆除`);
+    return true;
+  };
+
+  const update = (playerPosition, delta, time) => {
+    let nearest = null;
+    let nearestDistance = 6.4;
+    for (const plot of plots) {
+      const distance = Math.hypot(playerPosition.x - plot.root.position.x, playerPosition.z - plot.root.position.z);
+      if (distance < nearestDistance) {
+        nearest = plot;
+        nearestDistance = distance;
+      }
+      if (!plot.builtType) {
+        plot.beacon.position.y = 1.05 + Math.sin(time * 0.0022 + plot.index) * 0.18;
+        plot.beacon.rotation.y = time * 0.001 + plot.index;
+        plot.ring.material.emissiveIntensity = 0.35 + Math.sin(time * 0.002 + plot.index) * 0.14;
+      }
+      if (plot.buildProgress < 1) {
+        plot.buildProgress = Math.min(plot.buildProgress + delta * 0.9, 1);
+        const ease = 1 - Math.pow(1 - plot.buildProgress, 3);
+        plot.buildingGroup.scale.setScalar(0.72 + ease * 0.28 + Math.sin(plot.buildProgress * Math.PI) * 0.035);
+      }
+    }
+    if (nearest && nearest !== activePlot) {
+      selectionPinned = false;
+      activePlot = nearest;
+      refreshPanel();
+    } else if (!nearest && !selectionPinned && activePlot) {
+      activePlot = null;
+      refreshPanel();
+    }
+  };
+
+  const selectByPointer = (event, activeCamera, canvas) => {
+    const bounds = canvas.getBoundingClientRect();
+    pointer.set(
+      ((event.clientX - bounds.left) / bounds.width) * 2 - 1,
+      -((event.clientY - bounds.top) / bounds.height) * 2 + 1
+    );
+    raycaster.setFromCamera(pointer, activeCamera);
+    const hit = raycaster.intersectObjects(plotSurfaces, false)[0];
+    if (!hit) return false;
+    const plot = plots[hit.object.userData.buildPlotIndex];
+    if (!plot) return false;
+    activePlot = plot;
+    selectionPinned = true;
+    refreshPanel();
+    return true;
+  };
+
+  const resolveCollision = (position, padding = 0) => {
+    if (!position) return false;
+    let collided = false;
+    for (const plot of plots) {
+      if (!plot.builtType) continue;
+      const minimumDistance = plot.collisionRadius + padding;
+      const x = position.x - plot.root.position.x;
+      const z = position.z - plot.root.position.z;
+      const distance = Math.hypot(x, z);
+      if (distance >= minimumDistance) continue;
+      if (distance < 0.001) {
+        position.z = plot.root.position.z + minimumDistance;
+      } else {
+        const scale = minimumDistance / distance;
+        position.x = plot.root.position.x + x * scale;
+        position.z = plot.root.position.z + z * scale;
+      }
+      collided = true;
+    }
+    return collided;
+  };
+
+  try {
+    const saved = JSON.parse(localStorage.getItem(storageKey) || "[]");
+    if (Array.isArray(saved)) {
+      saved.slice(0, plots.length).forEach((typeId, index) => {
+        if (typeof typeId === "string") buildOnPlot(plots[index], typeId, false, false);
+      });
+    }
+  } catch {
+    // Ignore invalid or unavailable local persistence.
+  }
+
+  return {
+    root,
+    plots,
+    optionIds: optionSpecs.map((spec) => spec.id),
+    build,
+    demolish,
+    update,
+    resolveCollision,
+    selectByPointer,
+  };
+}
+
 async function loadForestTemplates() {
   const files = [
     "Tree_1_A_Color1.gltf",
@@ -948,6 +1219,7 @@ function populateForest(templates) {
     const z = Math.sin(angle) * radius;
     if (Math.abs(x) < 5.2) x += x < 0 ? -7.2 : 7.2;
     if (z > 6 && Math.abs(x) < 12) x += x < 0 ? -12 : 12;
+    if (isInsideBuildPlotClearing(x, z)) continue;
     placeModel(
       templates.trees[index % templates.trees.length],
       x,
@@ -965,6 +1237,7 @@ function populateForest(templates) {
     let x = Math.cos(angle) * radius;
     const z = Math.sin(angle) * radius;
     if (Math.abs(x) < 4.8) x += x < 0 ? -6.2 : 6.2;
+    if (isInsideBuildPlotClearing(x, z)) continue;
     placeModel(
       isBush ? templates.bush : templates.rock,
       x,
@@ -978,6 +1251,7 @@ function populateForest(templates) {
 
 let knight = null;
 let townCenter = null;
+let buildSystem = null;
 let worldPhase = 0.5;
 let nightActive = false;
 let bannerTimer = 0;
@@ -1054,15 +1328,18 @@ function updateDayNight(delta) {
 
 async function loadWorld() {
   loadingText.textContent = "正在唤醒真正的森林";
-  const [loadedKnight, forestTemplates, loadedTownCenter] = await Promise.all([
+  const [loadedKnight, forestTemplates, loadedTownCenter, loadedBuildSystem] = await Promise.all([
     createKnightRig(),
     loadForestTemplates(),
     createTownCenter(),
+    createBuildSystem(),
   ]);
   knight = loadedKnight;
   townCenter = loadedTownCenter;
+  buildSystem = loadedBuildSystem;
   scene.add(knight.root);
   scene.add(townCenter.root);
+  scene.add(buildSystem.root);
   populateForest(forestTemplates);
   setNightMode(nightActive, false, true);
   loadingProgress.style.width = "100%";
@@ -1097,6 +1374,13 @@ for (const eventName of ["keydown", "keyup"]) {
 
 window.addEventListener("keydown", (event) => {
   if (event.repeat) return;
+  if (/^Digit[1-8]$/.test(event.code)) {
+    event.preventDefault();
+    const optionIndex = Number(event.code.slice(-1)) - 1;
+    const optionId = buildSystem?.optionIds[optionIndex];
+    if (optionId) buildSystem.build(optionId);
+    return;
+  }
   if (event.code === "KeyJ") {
     event.preventDefault();
     knight?.requestAttack();
@@ -1113,9 +1397,15 @@ window.addEventListener("keydown", (event) => {
 });
 worldToggle.addEventListener("click", toggleDayNight);
 townUpgradeButton.addEventListener("click", upgradeTownCenter);
+document.querySelectorAll("[data-building]").forEach((button) => {
+  button.addEventListener("click", () => buildSystem?.build(button.dataset.building));
+});
+demolishBuildingButton.addEventListener("click", () => buildSystem?.demolish());
 
 renderer.domElement.addEventListener("pointerdown", (event) => {
-  if (event.pointerType === "mouse" && event.button === 0) knight?.requestAttack();
+  if (event.button !== 0) return;
+  if (buildSystem?.selectByPointer(event, camera, renderer.domElement)) return;
+  if (event.pointerType === "mouse") knight?.requestAttack();
 });
 attackButton.addEventListener("pointerdown", (event) => {
   event.preventDefault();
@@ -1167,6 +1457,10 @@ function resolveTownCenterCollision(position, padding = 0) {
   return true;
 }
 
+function resolveBuildPlotCollisions(position, padding = 0) {
+  return buildSystem?.resolveCollision(position, padding) ?? false;
+}
+
 function upgradeTownCenter() {
   if (!townCenter || !townCenter.upgrade()) return;
   resolveTownCenterCollision(knight.root.position, 0.72);
@@ -1210,7 +1504,10 @@ function tick(time) {
     knight.update(delta, currentState);
     motion.textContent = knight.isAttacking() ? "攻击" : currentState === "run" ? "奔跑" : currentState === "walk" ? "行走" : "待命";
     knight.root.position.addScaledVector(velocity, delta);
-    if (resolveTownCenterCollision(knight.root.position, 0.72)) velocity.multiplyScalar(0.2);
+    const hitTownCenter = resolveTownCenterCollision(knight.root.position, 0.72);
+    const hitBuiltPlot = resolveBuildPlotCollisions(knight.root.position, 0.72);
+    if (hitTownCenter || hitBuiltPlot) velocity.multiplyScalar(0.2);
+    buildSystem?.update(knight.root.position, delta, time);
     const distance = Math.hypot(knight.root.position.x, knight.root.position.z);
     if (distance > 108) {
       knight.root.position.x *= 108 / distance;

@@ -77,6 +77,60 @@ h1 { margin: 0; font-family: Georgia, "Songti SC", serif; font-size: clamp(30px,
 .town-upgrade small { color: rgba(245, 241, 223, .58); font-size: 9px; }
 .town-upgrade:disabled { cursor: default; opacity: .72; }
 
+.build-panel {
+  position: absolute;
+  right: 30px;
+  bottom: 58px;
+  z-index: 4;
+  width: 300px;
+  padding: 14px;
+  border: 1px solid rgba(120, 199, 231, .34);
+  border-radius: 14px;
+  background: rgba(13, 34, 31, .82);
+  box-shadow: 0 16px 44px rgba(0, 0, 0, .24);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(12px);
+  transition: opacity .22s ease, transform .22s ease, visibility .22s ease;
+  pointer-events: none;
+  backdrop-filter: blur(14px);
+}
+.build-panel.show { opacity: 1; visibility: visible; transform: translateY(0); pointer-events: auto; }
+.build-panel-heading { display: grid; gap: 3px; margin-bottom: 11px; }
+.build-panel-heading span { color: #7fc9e5; font-size: 9px; font-weight: 800; letter-spacing: .16em; }
+.build-panel-heading strong { color: #f3e7bd; font: 600 14px Georgia, "Songti SC", serif; letter-spacing: .05em; }
+.build-options { display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; }
+.build-options button {
+  display: grid;
+  justify-items: center;
+  gap: 5px;
+  padding: 9px 5px 8px;
+  border: 1px solid rgba(255, 255, 255, .14);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, .055);
+  color: #f6f1df;
+  font: inherit;
+  cursor: pointer;
+}
+.build-options button:hover { border-color: rgba(118, 205, 239, .58); background: rgba(72, 139, 153, .24); }
+.build-options button kbd { min-width: 20px; height: 19px; font-size: 9px; }
+.build-options button span { font-size: 10px; }
+.demolish-building {
+  display: none;
+  width: 100%;
+  margin-top: 3px;
+  padding: 9px 11px;
+  border: 1px solid rgba(238, 143, 119, .32);
+  border-radius: 9px;
+  background: rgba(111, 48, 37, .25);
+  color: #ffd4c4;
+  font: 11px inherit;
+  cursor: pointer;
+}
+.build-panel.built .build-options { display: none; }
+.build-panel.built .demolish-building { display: block; }
+.build-panel > small { display: block; margin-top: 10px; color: rgba(245, 241, 223, .5); font-size: 9px; letter-spacing: .04em; }
+
 .instructions {
   position: absolute;
   left: 30px;
@@ -122,6 +176,7 @@ kbd { display: grid; min-width: 22px; height: 22px; place-items: center; border:
   .touch-controls .down { left: 76px; bottom: calc(43px + env(safe-area-inset-bottom)); }
   .touch-controls .sprint { right: 28px; bottom: calc(55px + env(safe-area-inset-bottom)); width: 62px; height: 62px; color: #ead58f; }
   .touch-controls .attack { right: 42px; bottom: calc(133px + env(safe-area-inset-bottom)); width: 68px; height: 68px; border-color: rgba(238, 203, 112, .55); background: rgba(91, 42, 27, .72); color: #ffe39a; font-size: 20px; box-shadow: 0 0 24px rgba(225, 165, 69, .18); }
+  .build-panel { right: 18px; bottom: calc(222px + env(safe-area-inset-bottom)); width: min(300px, calc(100vw - 36px)); }
 }
 
 @media (max-width: 560px) {
@@ -131,6 +186,7 @@ kbd { display: grid; min-width: 22px; height: 22px; place-items: center; border:
   .world-state { min-width: 0; padding: 8px 10px; }
   .world-state strong { display: none; }
   .town-upgrade { top: max(96px, calc(env(safe-area-inset-top) + 72px)); right: 20px; min-width: 132px; }
+  .build-panel { right: 20px; }
 }
 
 @media (prefers-reduced-motion: reduce) { .loading-card .crest { animation: none; } }
