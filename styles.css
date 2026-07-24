@@ -58,6 +58,50 @@ h1 { margin: 0; font-family: Georgia, "Songti SC", serif; font-size: clamp(30px,
 .status strong { font-weight: 600; }
 
 .hud-status { display: flex; align-items: flex-start; gap: 10px; pointer-events: auto; }
+.resource-bar {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  display: flex;
+  gap: 9px;
+  transform: translateX(-50%);
+  pointer-events: auto;
+}
+.resource-chip {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 104px;
+  gap: 9px;
+  padding: 8px 12px;
+  overflow: visible;
+  border: 1px solid rgba(244, 236, 203, .22);
+  border-radius: 12px;
+  background: rgba(17, 40, 31, .68);
+  box-shadow: 0 8px 26px rgba(6, 18, 13, .18);
+  backdrop-filter: blur(12px);
+}
+.resource-chip > span:last-of-type { display: grid; gap: 1px; }
+.resource-chip small { color: rgba(245, 241, 223, .58); font-size: 8px; font-weight: 700; letter-spacing: .12em; }
+.resource-chip strong { color: #fff4cd; font: 700 14px/1 Georgia, "Songti SC", serif; font-variant-numeric: tabular-nums; }
+.resource-icon { display: grid; width: 22px; height: 22px; place-items: center; font-size: 15px; filter: drop-shadow(0 0 7px currentColor); }
+.resource-chip.wood .resource-icon { color: #b97a45; transform: rotate(-12deg); }
+.resource-chip.gold .resource-icon { color: #f4cc55; }
+.resource-chip em {
+  position: absolute;
+  top: 50%;
+  right: -4px;
+  color: #fff2b5;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+  line-height: 1;
+  opacity: 0;
+  transform: translate(100%, -50%);
+  pointer-events: none;
+}
+.resource-chip.gained { animation: resource-pulse .48s ease; }
+.resource-chip.gained em { animation: resource-gain .9s ease forwards; }
 .world-state { display: flex; align-items: center; gap: 9px; min-width: 154px; padding: 8px 12px; border: 1px solid rgba(244, 236, 203, .22); border-radius: 12px; background: rgba(17, 40, 31, .62); color: #f5f1df; font: inherit; text-align: left; backdrop-filter: blur(12px); cursor: pointer; }
 .world-state:hover { background: rgba(33, 58, 43, .78); }
 .world-state span:last-child { display: grid; gap: 2px; }
@@ -166,6 +210,14 @@ kbd { display: grid; min-width: 22px; height: 22px; place-items: center; border:
 .touch-controls button:active { background: rgba(216,193,122,.4); transform: scale(.94); }
 
 @keyframes breathe { 50% { transform: scale(1.08); box-shadow: 0 0 28px rgba(221,201,131,.16); } }
+@keyframes resource-pulse {
+  45% { border-color: rgba(255, 225, 132, .72); box-shadow: 0 0 22px rgba(242, 204, 91, .28); transform: translateY(-2px); }
+}
+@keyframes resource-gain {
+  0% { opacity: 0; transform: translate(100%, -20%); }
+  22% { opacity: 1; }
+  100% { opacity: 0; transform: translate(100%, -150%); }
+}
 
 @media (hover: none), (pointer: coarse) {
   .instructions, .credit { display: none; }
@@ -182,11 +234,21 @@ kbd { display: grid; min-width: 22px; height: 22px; place-items: center; border:
 @media (max-width: 560px) {
   .game-header { inset-inline: 20px; }
   h1 { font-size: 28px; }
+  .resource-bar { top: 66px; left: 0; gap: 6px; transform: none; }
+  .resource-chip { min-width: 88px; padding: 7px 9px; }
+  .resource-chip em { right: 2px; top: auto; bottom: -10px; transform: none; }
+  .resource-chip.gained em { animation-name: resource-gain-mobile; }
   .status { padding: 8px 11px; }
   .world-state { min-width: 0; padding: 8px 10px; }
   .world-state strong { display: none; }
   .town-upgrade { top: max(96px, calc(env(safe-area-inset-top) + 72px)); right: 20px; min-width: 132px; }
   .build-panel { right: 20px; }
+}
+
+@keyframes resource-gain-mobile {
+  0% { opacity: 0; transform: translateY(0); }
+  22% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-18px); }
 }
 
 @media (prefers-reduced-motion: reduce) { .loading-card .crest { animation: none; } }

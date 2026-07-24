@@ -6,8 +6,8 @@
     <meta name="theme-color" content="#142b22" />
     <meta name="description" content="雾林骑士：一个可移动骑士与低多边形森林的 Three.js 测试场景。" />
     <title>雾林骑士</title>
-    <link rel="stylesheet" href="./styles.css?v=6" />
-    <script defer src="./game.js?v=26"></script>
+    <link rel="stylesheet" href="./styles.css?v=7" />
+    <script defer src="./game.js?v=27"></script>
   </head>
   <body>
     <main class="game-shell">
@@ -17,6 +17,18 @@
         <div>
           <p class="eyebrow">THREE.JS FOREST STUDY</p>
           <h1>雾林骑士</h1>
+        </div>
+        <div class="resource-bar" aria-label="城镇资源">
+          <div id="resource-wood" class="resource-chip wood" title="伐木场 NPC 在白天工作时产出">
+            <span class="resource-icon" aria-hidden="true">▰</span>
+            <span><small>木材</small><strong id="wood-value">0</strong></span>
+            <em id="wood-gain"></em>
+          </div>
+          <div id="resource-gold" class="resource-chip gold" title="击杀城外怪物获得">
+            <span class="resource-icon" aria-hidden="true">●</span>
+            <span><small>金币</small><strong id="gold-value">0</strong></span>
+            <em id="gold-gain"></em>
+          </div>
         </div>
         <div class="hud-status">
           <button id="world-toggle" class="world-state" type="button" title="切换昼夜（N）">
@@ -82,7 +94,7 @@
         <button class="attack" id="attack-button" type="button" aria-label="攻击">剑</button>
       </div>
 
-      <footer class="credit">Three.js · KayKit CC0 骑士、建筑与环境模型</footer>
+      <footer class="credit">Three.js · KayKit / Quaternius 免费商用素材</footer>
     </main>
   </body>
 </html>

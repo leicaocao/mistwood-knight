@@ -21,7 +21,71 @@ const buildPanel = document.querySelector("#build-panel");
 const buildPlotTitle = document.querySelector("#build-plot-title");
 const buildHint = document.querySelector("#build-hint");
 const demolishBuildingButton = document.querySelector("#demolish-building");
+const woodValue = document.querySelector("#wood-value");
+const goldValue = document.querySelector("#gold-value");
+const woodGain = document.querySelector("#wood-gain");
+const goldGain = document.querySelector("#gold-gain");
+const woodResourceChip = document.querySelector("#resource-wood");
+const goldResourceChip = document.querySelector("#resource-gold");
 const keys = { forward: false, back: false, left: false, right: false, run: false };
+
+function createResourceSystem() {
+  const storageKey = "mistwood-resources-v1";
+  const values = { wood: 0, gold: 0 };
+  const elements = {
+    wood: { value: woodValue, gain: woodGain, chip: woodResourceChip },
+    gold: { value: goldValue, gain: goldGain, chip: goldResourceChip },
+  };
+  const animationTimers = { wood: 0, gold: 0 };
+
+  try {
+    const saved = JSON.parse(localStorage.getItem(storageKey) || "{}");
+    for (const type of Object.keys(values)) {
+      if (Number.isFinite(saved[type])) values[type] = Math.max(0, Math.floor(saved[type]));
+    }
+  } catch {
+    // Resources still work for the current session when storage is unavailable.
+  }
+
+  const render = (type) => {
+    elements[type].value.textContent = values[type].toLocaleString("zh-CN");
+  };
+
+  const persist = () => {
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(values));
+    } catch {
+      // Persistence is optional.
+    }
+  };
+
+  const add = (type, amount) => {
+    if (!(type in values) || !Number.isFinite(amount) || amount <= 0) return 0;
+    const gain = Math.max(1, Math.floor(amount));
+    values[type] += gain;
+    render(type);
+    persist();
+
+    const { chip, gain: gainElement } = elements[type];
+    clearTimeout(animationTimers[type]);
+    chip.classList.remove("gained");
+    void chip.offsetWidth;
+    gainElement.textContent = `+${gain}`;
+    chip.classList.add("gained");
+    animationTimers[type] = setTimeout(() => chip.classList.remove("gained"), 950);
+    return values[type];
+  };
+
+  render("wood");
+  render("gold");
+  return {
+    addWood: (amount) => add("wood", amount),
+    addGold: (amount) => add("gold", amount),
+    get: (type) => values[type] ?? 0,
+  };
+}
+
+const resourceSystem = createResourceSystem();
 
 function seededRandom(seed) {
   let value = seed;
@@ -902,6 +966,296 @@ function fitModelToHeight(model, targetHeight) {
   model.position.y -= scaledBox.min.y;
 }
 
+function styleMonsterModel(model, night) {
+  model.traverse((child) => {
+    if (!child.isMesh) return;
+    child.castShadow = true;
+    child.receiveShadow = true;
+    const sourceMaterials = Array.isArray(child.material) ? child.material : [child.material];
+    const styledMaterials = sourceMaterials.map((source) => {
+      const material = source.clone();
+      if (material.name === "Glow") {
+        material.emissive = new THREE.Color(night ? 0xff183f : 0xffd34f);
+        material.emissiveIntensity = night ? 4 : 0.75;
+      }
+      return material;
+    });
+    child.material = Array.isArray(child.material) ? styledMaterials : styledMaterials[0];
+  });
+}
+
+function createMonsterAnimationRig(model, clips) {
+  const clipByName = (name) => THREE.AnimationClip.findByName(clips, name);
+  const mixer = new THREE.AnimationMixer(model);
+  const actions = {
+    idle: mixer.clipAction(clipByName("Idle_A")),
+    walk: mixer.clipAction(clipByName("Walking_A")),
+    run: mixer.clipAction(clipByName("Running_A")),
+    attack: mixer.clipAction(clipByName("Melee_1H_Attack_Chop")),
+    hit: mixer.clipAction(clipByName("Hit_A")),
+    death: mixer.clipAction(clipByName("Death_A")),
+  };
+  for (const state of ["attack", "hit", "death"]) {
+    actions[state].setLoop(THREE.LoopOnce, 1);
+    actions[state].clampWhenFinished = true;
+  }
+  actions.idle.play();
+  return { mixer, actions, activeAction: actions.idle, activeState: "idle" };
+}
+
+function playMonsterAnimation(rig, state, restart = false) {
+  const nextAction = rig.actions[state];
+  if (!nextAction || (!restart && rig.activeState === state)) return;
+  nextAction.reset().setEffectiveTimeScale(1).setEffectiveWeight(1).fadeIn(0.12).play();
+  if (rig.activeAction !== nextAction) rig.activeAction.fadeOut(0.12);
+  rig.activeAction = nextAction;
+  rig.activeState = state;
+}
+
+async function loadMonsterAssets() {
+  const [dayCharacter, nightCharacter, axe, shield] = await Promise.all([
+    loadGLTF("./models/monsters/Skeleton_Minion.glb"),
+    loadGLTF("./models/monsters/Skeleton_Warrior.glb"),
+    loadGLTF("./models/monster-gear/Skeleton_Axe.gltf"),
+    loadGLTF("./models/monster-gear/Skeleton_Shield_Large_A.gltf"),
+  ]);
+  return {
+    dayTemplate: dayCharacter.scene,
+    nightTemplate: nightCharacter.scene,
+    axeTemplate: axe.scene,
+    shieldTemplate: shield.scene,
+  };
+}
+
+function createMonsterSystem(assets, clips, onGoldEarned) {
+  const root = new THREE.Group();
+  const attackDirection = new THREE.Vector3();
+  const playerForward = new THREE.Vector3();
+  let playerAttackCooldown = 0;
+  let currentNight = false;
+  const spawnPositions = [
+    new THREE.Vector3(-56, 0, -44),
+    new THREE.Vector3(58, 0, -46),
+    new THREE.Vector3(-69, 0, 16),
+    new THREE.Vector3(68, 0, 27),
+    new THREE.Vector3(-34, 0, 69),
+    new THREE.Vector3(41, 0, 72),
+  ];
+
+  const createMonster = (position, index) => {
+    const monsterRoot = new THREE.Group();
+    const dayGroup = new THREE.Group();
+    const nightGroup = new THREE.Group();
+    const dayModel = cloneSkeleton(assets.dayTemplate);
+    const nightModel = cloneSkeleton(assets.nightTemplate);
+    const axe = assets.axeTemplate.clone(true);
+    const shield = assets.shieldTemplate.clone(true);
+
+    nightModel.getObjectByName("handslot.r")?.add(axe);
+    nightModel.getObjectByName("handslot.l")?.add(shield);
+    styleMonsterModel(dayModel, false);
+    styleMonsterModel(nightModel, true);
+    setShadows(axe);
+    setShadows(shield);
+    fitModelToHeight(dayModel, 2.2);
+    fitModelToHeight(nightModel, 2.75);
+    dayGroup.add(dayModel);
+    nightGroup.add(nightModel);
+    monsterRoot.add(dayGroup, nightGroup);
+    monsterRoot.position.copy(position);
+    monsterRoot.rotation.y = index * 1.37;
+
+    const aura = new THREE.Mesh(
+      new THREE.TorusGeometry(1.05, 0.075, 8, 32),
+      new THREE.MeshBasicMaterial({
+        color: 0xff234e,
+        transparent: true,
+        opacity: 0.72,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      })
+    );
+    aura.rotation.x = Math.PI / 2;
+    aura.position.y = 0.08;
+    nightGroup.add(aura);
+    const eyeLight = new THREE.PointLight(0xff1748, 2.1, 5.5, 2);
+    eyeLight.position.set(0, 1.7, 0.25);
+    nightGroup.add(eyeLight);
+    root.add(monsterRoot);
+
+    return {
+      root: monsterRoot,
+      dayGroup,
+      nightGroup,
+      dayRig: createMonsterAnimationRig(dayModel, clips),
+      nightRig: createMonsterAnimationRig(nightModel, clips),
+      home: position.clone(),
+      wanderTarget: position.clone(),
+      wanderTimer: index * 0.6,
+      attackCooldown: index * 0.13,
+      hitTimer: 0,
+      deathTimer: 0,
+      respawnTimer: 0,
+      health: 3,
+      maxHealth: 3,
+      dead: false,
+      direction: new THREE.Vector3(),
+      desiredQuaternion: new THREE.Quaternion(),
+      desiredEuler: new THREE.Euler(),
+      aura,
+      index,
+    };
+  };
+
+  const monsters = spawnPositions.map(createMonster);
+
+  const setNightMode = (night) => {
+    currentNight = night;
+    for (const monster of monsters) {
+      monster.dayGroup.visible = !night;
+      monster.nightGroup.visible = night;
+      if (!monster.dead) {
+        playMonsterAnimation(night ? monster.nightRig : monster.dayRig, "idle", true);
+      }
+    }
+  };
+
+  const respawn = (monster) => {
+    monster.dead = false;
+    monster.health = monster.maxHealth;
+    monster.root.visible = true;
+    monster.root.position.copy(monster.home);
+    monster.dayGroup.visible = !currentNight;
+    monster.nightGroup.visible = currentNight;
+    monster.wanderTarget.copy(monster.home);
+    monster.wanderTimer = 0.3 + monster.index * 0.2;
+    playMonsterAnimation(currentNight ? monster.nightRig : monster.dayRig, "idle", true);
+  };
+
+  const damageMonster = (monster) => {
+    if (monster.dead) return;
+    monster.health -= 1;
+    const rig = currentNight ? monster.nightRig : monster.dayRig;
+    if (monster.health > 0) {
+      monster.hitTimer = 0.32;
+      playMonsterAnimation(rig, "hit", true);
+      return;
+    }
+
+    monster.dead = true;
+    monster.deathTimer = 1.3;
+    monster.respawnTimer = 15;
+    playMonsterAnimation(rig, "death", true);
+    const reward = currentNight ? 12 : 8;
+    onGoldEarned(reward);
+    showThreat(`骷髅被击败 · +${reward} 金币`);
+  };
+
+  const playerAttack = (playerRoot) => {
+    if (!playerRoot || playerAttackCooldown > 0) return false;
+    playerForward.set(0, 0, 1).applyQuaternion(playerRoot.quaternion).setY(0).normalize();
+    let target = null;
+    let targetDistance = 3.15;
+    for (const monster of monsters) {
+      if (monster.dead || !monster.root.visible) continue;
+      attackDirection.subVectors(monster.root.position, playerRoot.position).setY(0);
+      const distance = attackDirection.length();
+      if (distance > targetDistance || distance < 0.001) continue;
+      attackDirection.multiplyScalar(1 / distance);
+      if (playerForward.dot(attackDirection) < 0.08) continue;
+      target = monster;
+      targetDistance = distance;
+    }
+    if (!target) return false;
+    playerAttackCooldown = 0.28;
+    damageMonster(target);
+    return true;
+  };
+
+  const updateMonster = (monster, delta, time) => {
+    const rig = currentNight ? monster.nightRig : monster.dayRig;
+    if (monster.dead) {
+      rig.mixer.update(delta);
+      monster.deathTimer -= delta;
+      monster.respawnTimer -= delta;
+      if (monster.deathTimer <= 0) monster.root.visible = false;
+      if (monster.respawnTimer <= 0) respawn(monster);
+      return;
+    }
+    if (!knight) return;
+    if (monster.hitTimer > 0) {
+      monster.hitTimer -= delta;
+      rig.mixer.update(delta);
+      return;
+    }
+
+    const playerDistance = monster.root.position.distanceTo(knight.root.position);
+    const detectionRadius = currentNight ? 25 : 4.5;
+    const attackRadius = currentNight ? 1.9 : 1.5;
+    let state = "idle";
+    let speed = 0;
+
+    if (playerDistance < detectionRadius) {
+      monster.direction.subVectors(knight.root.position, monster.root.position);
+      if (playerDistance <= attackRadius) {
+        state = "attack";
+      } else {
+        state = currentNight ? "run" : "walk";
+        speed = currentNight ? 2.55 : 0.95;
+      }
+    } else {
+      monster.wanderTimer -= delta;
+      if (monster.wanderTimer <= 0) {
+        const angle = time * 0.00023 + monster.index * 1.81;
+        const radius = 2.6 + (monster.index % 3) * 0.65;
+        monster.wanderTarget.set(
+          monster.home.x + Math.cos(angle) * radius,
+          0,
+          monster.home.z + Math.sin(angle) * radius
+        );
+        monster.wanderTimer = 2.6 + (monster.index % 3) * 0.8;
+      }
+      monster.direction.subVectors(monster.wanderTarget, monster.root.position);
+      if (monster.direction.lengthSq() > 0.18) {
+        state = "walk";
+        speed = currentNight ? 0.86 : 0.5;
+      }
+    }
+
+    monster.attackCooldown -= delta;
+    if (state === "attack") {
+      if (monster.attackCooldown <= 0) {
+        playMonsterAnimation(rig, "attack", true);
+        monster.attackCooldown = currentNight ? 0.92 : 1.8;
+      }
+    } else {
+      playMonsterAnimation(rig, state);
+      if (speed > 0 && monster.direction.lengthSq() > 0.001) {
+        monster.direction.y = 0;
+        monster.direction.normalize();
+        monster.root.position.addScaledVector(monster.direction, speed * delta);
+        resolveCityWallCollision(monster.root.position, 0.58);
+      }
+    }
+
+    if (monster.direction.lengthSq() > 0.001) {
+      monster.desiredEuler.set(0, Math.atan2(monster.direction.x, monster.direction.z), 0);
+      monster.desiredQuaternion.setFromEuler(monster.desiredEuler);
+      monster.root.quaternion.slerp(monster.desiredQuaternion, 1 - Math.exp(-delta * 10));
+    }
+    rig.mixer.update(delta);
+    monster.aura.material.opacity = 0.56 + Math.sin(time * 0.007 + monster.index) * 0.18;
+  };
+
+  const update = (delta, time) => {
+    playerAttackCooldown = Math.max(0, playerAttackCooldown - delta);
+    for (const monster of monsters) updateMonster(monster, delta, time);
+  };
+
+  setNightMode(false);
+  return { root, setNightMode, playerAttack, update };
+}
+
 const cityNpcAssetUrls = {
   farmer: "./models/npcs/farmer.glb",
   "worker-m": "./models/npcs/worker-m.glb",
@@ -939,7 +1293,7 @@ function findNpcClip(clips, exactNames, containsNames = []) {
   }) || null;
 }
 
-function createCityNpcSystem(characterTemplate, clips, npcAssets) {
+function createCityNpcSystem(characterTemplate, clips, npcAssets, onWoodProduced) {
   const root = new THREE.Group();
   const npcsByPlot = new Map();
   const direction = new THREE.Vector3();
@@ -1000,6 +1354,7 @@ function createCityNpcSystem(characterTemplate, clips, npcAssets) {
       count: 2,
       speed: 1.3,
       works: true,
+      producesWood: true,
       models: ["farmer", "worker-m", "worker-f"],
     },
     tower: {
@@ -1104,7 +1459,9 @@ function createCityNpcSystem(characterTemplate, clips, npcAssets) {
     const walkClip = findNpcClip(asset.clips, ["Walking_A", "Walk"], ["walk"]);
     const workClip = assetId === "guard"
       ? findNpcClip(asset.clips, ["Melee_1H_Attack_Chop"], ["attack_chop"])
-      : findNpcClip(asset.clips, ["Interact", "Punch_Right", "Punch_Left"], ["interact", "punch"]);
+      : typeId === "lumbermill"
+        ? findNpcClip(asset.clips, ["Punch_Right", "Punch_Left", "Interact"], ["punch", "interact"])
+        : findNpcClip(asset.clips, ["Interact", "Punch_Right", "Punch_Left"], ["interact", "punch"]);
     const actions = {
       idle: idleClip ? mixer.clipAction(idleClip) : null,
       walk: walkClip ? mixer.clipAction(walkClip) : null,
@@ -1133,6 +1490,7 @@ function createCityNpcSystem(characterTemplate, clips, npcAssets) {
       currentPoint: 0,
       targetPoint: 1,
       waitTimer: 0.7 + random() * 2.4,
+      productionTimer: 4.8 + random() * 2.4,
     };
   };
 
@@ -1165,11 +1523,23 @@ function createCityNpcSystem(characterTemplate, clips, npcAssets) {
     }
   };
 
-  const update = (delta) => {
+  const update = (delta, isNight = false) => {
     for (const npcs of npcsByPlot.values()) {
       for (const npc of npcs) {
         npc.mixer.update(delta);
         if (npc.waitTimer > 0) {
+          if (npc.role.producesWood && npc.currentPoint === 0) {
+            if (isNight) {
+              setNpcAction(npc, "idle");
+            } else {
+              setNpcAction(npc, "work");
+              npc.productionTimer -= delta;
+              if (npc.productionTimer <= 0) {
+                onWoodProduced(2);
+                npc.productionTimer = 5.2 + npc.random() * 2.3;
+              }
+            }
+          }
           npc.waitTimer -= delta;
           if (npc.waitTimer <= 0) {
             npc.targetPoint = (npc.currentPoint + 1) % npc.route.length;
@@ -1184,7 +1554,9 @@ function createCityNpcSystem(characterTemplate, clips, npcAssets) {
         if (distance < 0.16) {
           npc.root.position.copy(target);
           npc.currentPoint = npc.targetPoint;
-          const working = npc.currentPoint === 0 && npc.role.works;
+          const working = npc.currentPoint === 0
+            && npc.role.works
+            && (!npc.role.producesWood || !isNight);
           npc.waitTimer = working
             ? 3.2 + npc.random() * 3.1
             : 0.65 + npc.random() * 1.65;
@@ -2393,6 +2765,7 @@ let knight = null;
 let townCenter = null;
 let buildSystem = null;
 let cityNpcSystem = null;
+let monsterSystem = null;
 let worldPhase = 0.5;
 let nightActive = false;
 let bannerTimer = 0;
@@ -2434,10 +2807,11 @@ function setNightMode(nextNight, announce = true, force = false) {
   nightActive = nextNight;
   worldToggle.classList.toggle("night", nightActive);
   worldIcon.textContent = nightActive ? "☾" : "☀";
-  worldLabel.textContent = nightActive ? "夜晚 · 城镇戒备" : "白昼 · 视野清晰";
+  worldLabel.textContent = nightActive ? "夜晚 · 怪物狂暴" : "白昼 · 伐木进行";
+  monsterSystem?.setNightMode(nightActive);
 
   if (announce) {
-    showThreat(nightActive ? "夜幕降临 · 城镇火炬已点亮" : "晨光降临 · 森林恢复宁静");
+    showThreat(nightActive ? "夜幕降临 · 城外骷髅开始狂暴" : "晨光降临 · 伐木场恢复生产");
   }
 }
 
@@ -2511,6 +2885,7 @@ async function loadWorld() {
     loadedBuildSystem,
     loadedCityDetails,
     loadedCityNpcAssets,
+    loadedMonsterAssets,
   ] = await Promise.all([
     createKnightRig(),
     loadForestTemplates(),
@@ -2518,6 +2893,7 @@ async function loadWorld() {
     createBuildSystem(),
     createCityDetails(),
     loadCityNpcAssets(),
+    loadMonsterAssets(),
   ]);
   knight = loadedKnight;
   townCenter = loadedTownCenter;
@@ -2525,12 +2901,19 @@ async function loadWorld() {
   cityNpcSystem = createCityNpcSystem(
     loadedKnight.npcTemplate,
     loadedKnight.npcClips,
-    loadedCityNpcAssets
+    loadedCityNpcAssets,
+    (amount) => resourceSystem.addWood(amount)
+  );
+  monsterSystem = createMonsterSystem(
+    loadedMonsterAssets,
+    loadedKnight.npcClips,
+    (amount) => resourceSystem.addGold(amount)
   );
   scene.add(knight.root);
   scene.add(townCenter.root);
   scene.add(buildSystem.root);
   scene.add(cityNpcSystem.root);
+  scene.add(monsterSystem.root);
   scene.add(loadedCityDetails);
   cityNpcSystem.sync(buildSystem.plots);
   populateForest(forestTemplates);
@@ -2565,6 +2948,12 @@ for (const eventName of ["keydown", "keyup"]) {
   });
 }
 
+function requestPlayerAttack() {
+  if (!knight) return;
+  knight.requestAttack();
+  monsterSystem?.playerAttack(knight.root);
+}
+
 window.addEventListener("keydown", (event) => {
   if (event.repeat) return;
   if (/^Digit[1-8]$/.test(event.code)) {
@@ -2576,7 +2965,7 @@ window.addEventListener("keydown", (event) => {
   }
   if (event.code === "KeyJ") {
     event.preventDefault();
-    knight?.requestAttack();
+    requestPlayerAttack();
     return;
   }
   if (event.code === "KeyU") {
@@ -2598,11 +2987,11 @@ demolishBuildingButton.addEventListener("click", () => buildSystem?.demolish());
 renderer.domElement.addEventListener("pointerdown", (event) => {
   if (event.button !== 0) return;
   if (buildSystem?.selectByPointer(event, camera, renderer.domElement)) return;
-  if (event.pointerType === "mouse") knight?.requestAttack();
+  if (event.pointerType === "mouse") requestPlayerAttack();
 });
 attackButton.addEventListener("pointerdown", (event) => {
   event.preventDefault();
-  knight?.requestAttack();
+  requestPlayerAttack();
 });
 
 document.querySelectorAll("[data-key]").forEach((button) => {
@@ -2726,7 +3115,8 @@ function tick(time) {
   updateDayNight(delta);
   updateCityWallDetails(time);
   townCenter?.update(delta, time);
-  cityNpcSystem?.update(delta);
+  cityNpcSystem?.update(delta, nightActive);
+  monsterSystem?.update(delta, time);
 
   if (knight) {
     const forwardInput = (keys.forward ? 1 : 0) - (keys.back ? 1 : 0);
