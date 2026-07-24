@@ -2516,15 +2516,11 @@ async function createBuildSystem() {
 
   let activePlot = null;
   let selectionPinned = false;
-  const storageKey = "mistwood-build-plots-v1";
-
-  const persist = () => {
-    try {
-      localStorage.setItem(storageKey, JSON.stringify(plots.map((plot) => plot.builtType)));
-    } catch {
-      // Persistence is optional; building remains available for the current session.
-    }
-  };
+  try {
+    localStorage.removeItem("mistwood-build-plots-v1");
+  } catch {
+    // A fresh building layout is still used when storage is unavailable.
+  }
 
   const refreshPanel = () => {
     const visible = Boolean(activePlot);
@@ -2541,7 +2537,7 @@ async function createBuildSystem() {
       : "点击建筑，或按数字键 1-8 建造";
   };
 
-  const buildOnPlot = (plot, typeId, animate = true, shouldPersist = true) => {
+  const buildOnPlot = (plot, typeId, animate = true) => {
     const definition = definitions.get(typeId);
     if (!plot || !definition || plot.builtType) return false;
     const model = definition.template.clone(true);
@@ -2562,7 +2558,6 @@ async function createBuildSystem() {
     plot.foundation.material.color.setHex(0x858077);
     plot.ringMaterial.color.setHex(0xd3b65c);
     if (animate) showThreat(`${definition.label} · 建造完成`);
-    if (shouldPersist) persist();
     if (plot === activePlot) refreshPanel();
     return true;
   };
@@ -2585,7 +2580,6 @@ async function createBuildSystem() {
     activePlot.marker.visible = true;
     activePlot.foundation.material.color.setHex(0x718b83);
     activePlot.ringMaterial.color.setHex(0x6ec5e2);
-    persist();
     refreshPanel();
     showThreat(`${removedName} · 已拆除`);
     return true;
@@ -2662,17 +2656,6 @@ async function createBuildSystem() {
     }
     return collided;
   };
-
-  try {
-    const saved = JSON.parse(localStorage.getItem(storageKey) || "[]");
-    if (Array.isArray(saved)) {
-      saved.slice(0, plots.length).forEach((typeId, index) => {
-        if (typeof typeId === "string") buildOnPlot(plots[index], typeId, false, false);
-      });
-    }
-  } catch {
-    // Ignore invalid or unavailable local persistence.
-  }
 
   return {
     root,
