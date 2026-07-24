@@ -1293,7 +1293,7 @@ function findNpcClip(clips, exactNames, containsNames = []) {
   }) || null;
 }
 
-function createCityNpcSystem(characterTemplate, clips, npcAssets, onWoodProduced) {
+function createCityNpcSystem(characterTemplate, clips, npcAssets, onWoodProduced, forestTemplates) {
   const root = new THREE.Group();
   const npcsByPlot = new Map();
   const direction = new THREE.Vector3();
@@ -1352,7 +1352,7 @@ function createCityNpcSystem(characterTemplate, clips, npcAssets, onWoodProduced
     lumbermill: {
       color: 0x8b633a,
       count: 2,
-      speed: 1.3,
+      speed: 2.25,
       works: true,
       producesWood: true,
       models: ["farmer", "worker-m", "worker-f"],
@@ -1401,14 +1401,65 @@ function createCityNpcSystem(characterTemplate, clips, npcAssets, onWoodProduced
         ? new THREE.Vector3(signX * 10.4, 0, laneOffset)
         : new THREE.Vector3(laneOffset, 0, signZ * 10.4));
 
-    return [
-      workSpot,
-      streetEntry,
-      streetHub,
-      destination,
-      streetHub.clone(),
-      streetEntry.clone(),
-    ];
+    if (role.producesWood) {
+      const gateLane = laneOffset * 0.72;
+      const treeLaneDirection = workerIndex % 2 === 0 ? -1 : 1;
+      const treeLane = treeLaneDirection * (5.4 + (plot.index % 3) * 1.15);
+      const treeDistance = 51.2 + (plot.index % 4) * 2.3;
+      const gateInner = useXAxis
+        ? new THREE.Vector3(signX * 32.5, 0, gateLane)
+        : new THREE.Vector3(gateLane, 0, signZ * 32.5);
+      const gateOuter = useXAxis
+        ? new THREE.Vector3(signX * 42.2, 0, gateLane)
+        : new THREE.Vector3(gateLane, 0, signZ * 42.2);
+      const forestApproach = useXAxis
+        ? new THREE.Vector3(signX * 46.2, 0, treeLane)
+        : new THREE.Vector3(treeLane, 0, signZ * 46.2);
+      const treePosition = useXAxis
+        ? new THREE.Vector3(signX * treeDistance, 0, treeLane)
+        : new THREE.Vector3(treeLane, 0, signZ * treeDistance);
+      const treeWorkSpot = useXAxis
+        ? new THREE.Vector3(signX * (treeDistance - 1.45), 0, treeLane)
+        : new THREE.Vector3(treeLane, 0, signZ * (treeDistance - 1.45));
+      return {
+        points: [
+          workSpot,
+          streetEntry,
+          streetHub,
+          gateInner,
+          gateOuter,
+          forestApproach,
+          treeWorkSpot,
+          forestApproach.clone(),
+          gateOuter.clone(),
+          gateInner.clone(),
+          streetHub.clone(),
+          streetEntry.clone(),
+        ],
+        home: workSpot,
+        streetEntry,
+        streetHub,
+        gateInner,
+        gateOuter,
+        forestApproach,
+        treeWorkSpot,
+        treePosition,
+        workIndex: 6,
+      };
+    }
+
+    return {
+      points: [
+        workSpot,
+        streetEntry,
+        streetHub,
+        destination,
+        streetHub.clone(),
+        streetEntry.clone(),
+      ],
+      home: workSpot,
+      workIndex: 0,
+    };
   };
 
   const setNpcAction = (npc, state) => {
@@ -1468,15 +1519,27 @@ function createCityNpcSystem(characterTemplate, clips, npcAssets, onWoodProduced
       work: role.works && workClip ? mixer.clipAction(workClip) : null,
     };
     actions.idle?.play();
+    if (role.producesWood && actions.walk) actions.walk.setEffectiveTimeScale(1.32);
     if (actions.work) {
       actions.work.setLoop(THREE.LoopRepeat, Infinity);
       actions.work.setEffectiveTimeScale(0.72 + workerIndex * 0.06);
     }
 
-    const route = createRoute(plot, role, workerIndex);
+    const random = seededRandom(5100 + plot.index * 97 + workerIndex * 31);
+    const routePlan = createRoute(plot, role, workerIndex);
+    const route = routePlan.points;
+    let workTree = null;
+    if (routePlan.treePosition && forestTemplates?.trees?.length) {
+      const treeTemplate = forestTemplates.trees[(plot.index + workerIndex) % forestTemplates.trees.length];
+      workTree = treeTemplate.clone(true);
+      workTree.position.copy(routePlan.treePosition);
+      workTree.rotation.y = random() * Math.PI * 2;
+      workTree.scale.setScalar(1.02 + random() * 0.16);
+      setShadows(workTree, true);
+      root.add(workTree);
+    }
     npcRoot.position.copy(route[0]);
     root.add(npcRoot);
-    const random = seededRandom(5100 + plot.index * 97 + workerIndex * 31);
     return {
       root: npcRoot,
       model,
@@ -1485,12 +1548,19 @@ function createCityNpcSystem(characterTemplate, clips, npcAssets, onWoodProduced
       activeAction: actions.idle,
       assetId,
       route,
+      routePlan,
+      dayRoute: route,
+      workIndex: routePlan.workIndex,
+      workTree,
       role,
       random,
       currentPoint: 0,
       targetPoint: 1,
       waitTimer: 0.7 + random() * 2.4,
-      productionTimer: 4.8 + random() * 2.4,
+      productionTimer: 2.6 + random() * 1.2,
+      nightState: false,
+      returningHome: false,
+      atHomeNight: false,
     };
   };
 
@@ -1501,6 +1571,7 @@ function createCityNpcSystem(characterTemplate, clips, npcAssets, onWoodProduced
       npc.mixer.stopAllAction();
       npc.mixer.uncacheRoot(npc.model);
       root.remove(npc.root);
+      if (npc.workTree) root.remove(npc.workTree);
     }
     npcsByPlot.delete(plotIndex);
   };
@@ -1523,12 +1594,91 @@ function createCityNpcSystem(characterTemplate, clips, npcAssets, onWoodProduced
     }
   };
 
+  const setLumberSchedule = (npc, isNight) => {
+    if (!npc.role.producesWood || npc.nightState === isNight) return;
+    npc.nightState = isNight;
+    npc.waitTimer = 0;
+
+    if (isNight) {
+      const plan = npc.routePlan;
+      const outsideCity = Math.abs(npc.root.position.x) > cityWallHalfExtent + 0.25
+        || Math.abs(npc.root.position.z) > cityWallHalfExtent + 0.25;
+      const returnRoute = [npc.root.position.clone()];
+      if (outsideCity) {
+        returnRoute.push(
+          plan.gateOuter.clone(),
+          plan.gateInner.clone(),
+          plan.streetHub.clone(),
+          plan.streetEntry.clone(),
+          plan.home.clone()
+        );
+      } else {
+        const homewardPoints = [
+          plan.home,
+          plan.streetEntry,
+          plan.streetHub,
+          plan.gateInner,
+        ];
+        let nearestIndex = 0;
+        let nearestDistance = Infinity;
+        homewardPoints.forEach((point, index) => {
+          const distance = point.distanceToSquared(npc.root.position);
+          if (distance < nearestDistance) {
+            nearestIndex = index;
+            nearestDistance = distance;
+          }
+        });
+        returnRoute.push(...homewardPoints.slice(0, nearestIndex + 1).reverse().map((point) => point.clone()));
+      }
+      npc.route = returnRoute.filter((point, index, points) =>
+        index === 0 || point.distanceToSquared(points[index - 1]) > 0.04
+      );
+      npc.currentPoint = 0;
+      npc.targetPoint = Math.min(1, npc.route.length - 1);
+      npc.workIndex = -1;
+      npc.returningHome = npc.route.length > 1;
+      npc.atHomeNight = npc.route.length <= 1;
+      setNpcAction(npc, npc.atHomeNight ? "idle" : "walk");
+      return;
+    }
+
+    npc.route = npc.dayRoute;
+    npc.workIndex = npc.routePlan.workIndex;
+    npc.returningHome = false;
+    npc.atHomeNight = false;
+    const outsideCity = Math.abs(npc.root.position.x) > cityWallHalfExtent + 0.25
+      || Math.abs(npc.root.position.z) > cityWallHalfExtent + 0.25;
+    if (outsideCity) {
+      npc.currentPoint = 4;
+      npc.targetPoint = 5;
+    } else {
+      const departurePoints = npc.route.slice(0, 4);
+      let nearestIndex = 0;
+      let nearestDistance = Infinity;
+      departurePoints.forEach((point, index) => {
+        const distance = point.distanceToSquared(npc.root.position);
+        if (distance < nearestDistance) {
+          nearestIndex = index;
+          nearestDistance = distance;
+        }
+      });
+      npc.currentPoint = nearestIndex;
+      npc.targetPoint = Math.min(nearestIndex + 1, 4);
+    }
+    setNpcAction(npc, "walk");
+  };
+
   const update = (delta, isNight = false) => {
     for (const npcs of npcsByPlot.values()) {
       for (const npc of npcs) {
         npc.mixer.update(delta);
+        setLumberSchedule(npc, isNight);
+        if (npc.role.producesWood && isNight && npc.atHomeNight) {
+          setNpcAction(npc, "idle");
+          continue;
+        }
         if (npc.waitTimer > 0) {
-          if (npc.role.producesWood && npc.currentPoint === 0) {
+          if (npc.role.producesWood && npc.currentPoint === npc.workIndex) {
             if (isNight) {
               setNpcAction(npc, "idle");
             } else {
@@ -1536,7 +1686,7 @@ function createCityNpcSystem(characterTemplate, clips, npcAssets, onWoodProduced
               npc.productionTimer -= delta;
               if (npc.productionTimer <= 0) {
                 onWoodProduced(2);
-                npc.productionTimer = 5.2 + npc.random() * 2.3;
+                npc.productionTimer = 4.2 + npc.random() * 1.6;
               }
             }
           }
@@ -1554,13 +1704,33 @@ function createCityNpcSystem(characterTemplate, clips, npcAssets, onWoodProduced
         if (distance < 0.16) {
           npc.root.position.copy(target);
           npc.currentPoint = npc.targetPoint;
+          if (npc.role.producesWood && isNight && npc.returningHome) {
+            if (npc.currentPoint >= npc.route.length - 1) {
+              npc.returningHome = false;
+              npc.atHomeNight = true;
+              setNpcAction(npc, "idle");
+            } else {
+              npc.targetPoint = npc.currentPoint + 1;
+              setNpcAction(npc, "walk");
+            }
+            continue;
+          }
           const working = npc.currentPoint === 0
             && npc.role.works
-            && (!npc.role.producesWood || !isNight);
-          npc.waitTimer = working
-            ? 3.2 + npc.random() * 3.1
-            : 0.65 + npc.random() * 1.65;
-          setNpcAction(npc, working ? "work" : "idle");
+            && !npc.role.producesWood;
+          const lumberWorking = npc.role.producesWood && npc.currentPoint === npc.workIndex;
+          if (npc.role.producesWood && !lumberWorking && npc.currentPoint !== 0) {
+            npc.waitTimer = 0;
+            npc.targetPoint = (npc.currentPoint + 1) % npc.route.length;
+            setNpcAction(npc, "walk");
+            continue;
+          }
+          npc.waitTimer = lumberWorking
+            ? 5.2 + npc.random() * 2.2
+            : working
+              ? 3.2 + npc.random() * 3.1
+              : 0.65 + npc.random() * 1.65;
+          setNpcAction(npc, working || lumberWorking ? "work" : "idle");
           continue;
         }
 
@@ -2902,7 +3072,8 @@ async function loadWorld() {
     loadedKnight.npcTemplate,
     loadedKnight.npcClips,
     loadedCityNpcAssets,
-    (amount) => resourceSystem.addWood(amount)
+    (amount) => resourceSystem.addWood(amount),
+    forestTemplates
   );
   monsterSystem = createMonsterSystem(
     loadedMonsterAssets,
