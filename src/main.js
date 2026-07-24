@@ -20,6 +20,7 @@ const townActionLabel = document.querySelector("#town-action");
 const buildPanel = document.querySelector("#build-panel");
 const buildPlotTitle = document.querySelector("#build-plot-title");
 const buildHint = document.querySelector("#build-hint");
+const upgradeBuildingButton = document.querySelector("#upgrade-building");
 const demolishBuildingButton = document.querySelector("#demolish-building");
 const woodValue = document.querySelector("#wood-value");
 const goldValue = document.querySelector("#gold-value");
@@ -1351,7 +1352,7 @@ function createCityNpcSystem(characterTemplate, clips, npcAssets, onWoodProduced
     },
     lumbermill: {
       color: 0x8b633a,
-      count: 2,
+      count: 1,
       speed: 2.25,
       works: true,
       producesWood: true,
@@ -1367,7 +1368,7 @@ function createCityNpcSystem(characterTemplate, clips, npcAssets, onWoodProduced
     },
   };
 
-  const createRoute = (plot, role, workerIndex) => {
+  const createRoute = (plot, role, workerIndex, workerCount) => {
     const position = plot.root.position;
     const signX = Math.sign(position.x) || 1;
     const signZ = Math.sign(position.z) || 1;
@@ -1379,7 +1380,7 @@ function createCityNpcSystem(characterTemplate, clips, npcAssets, onWoodProduced
       ? new THREE.Vector3(-signX, 0, 0)
       : new THREE.Vector3(0, 0, -signZ);
     const tangent = new THREE.Vector3(-inward.z, 0, inward.x);
-    const laneOffset = (workerIndex - (role.count - 1) / 2) * 0.72;
+    const laneOffset = (workerIndex - (workerCount - 1) / 2) * 0.72;
     const offset = tangent.clone().multiplyScalar(laneOffset);
     const workSpot = position.clone()
       .addScaledVector(inward, plot.collisionRadius + 1.05)
@@ -1403,8 +1404,14 @@ function createCityNpcSystem(characterTemplate, clips, npcAssets, onWoodProduced
 
     if (role.producesWood) {
       const gateLane = laneOffset * 0.72;
-      const treeLaneDirection = workerIndex % 2 === 0 ? -1 : 1;
-      const treeLane = treeLaneDirection * (5.4 + (plot.index % 3) * 1.15);
+      const treeLaneMultiplier = workerCount === 1
+        ? (plot.index % 2 === 0 ? -1 : 1)
+        : workerIndex === 0
+          ? -1
+          : workerIndex === 1
+            ? 1
+            : -1.65;
+      const treeLane = treeLaneMultiplier * (5.4 + (plot.index % 3) * 1.15);
       const treeDistance = 51.2 + (plot.index % 4) * 2.3;
       const gateInner = useXAxis
         ? new THREE.Vector3(signX * 32.5, 0, gateLane)
@@ -1470,7 +1477,7 @@ function createCityNpcSystem(characterTemplate, clips, npcAssets, onWoodProduced
     npc.activeAction = nextAction;
   };
 
-  const createNpc = (plot, typeId, workerIndex) => {
+  const createNpc = (plot, typeId, workerIndex, workerCount) => {
     const role = roles[typeId] || roles.home;
     const npcRoot = new THREE.Group();
     const assetId = role.models[(plot.index + workerIndex) % role.models.length];
@@ -1526,7 +1533,7 @@ function createCityNpcSystem(characterTemplate, clips, npcAssets, onWoodProduced
     }
 
     const random = seededRandom(5100 + plot.index * 97 + workerIndex * 31);
-    const routePlan = createRoute(plot, role, workerIndex);
+    const routePlan = createRoute(plot, role, workerIndex, workerCount);
     const route = routePlan.points;
     let workTree = null;
     if (routePlan.treePosition && forestTemplates?.trees?.length) {
@@ -1580,9 +1587,12 @@ function createCityNpcSystem(characterTemplate, clips, npcAssets, onWoodProduced
     if (!plot?.builtType) return;
     removePlot(plot.index);
     const role = roles[plot.builtType] || roles.home;
+    const workerCount = plot.builtType === "lumbermill"
+      ? THREE.MathUtils.clamp(plot.buildingLevel || 1, 1, 3)
+      : role.count;
     const npcs = [];
-    for (let index = 0; index < role.count; index += 1) {
-      npcs.push(createNpc(plot, plot.builtType, index));
+    for (let index = 0; index < workerCount; index += 1) {
+      npcs.push(createNpc(plot, plot.builtType, index, workerCount));
     }
     npcsByPlot.set(plot.index, npcs);
     plot.npcSpawned = true;
@@ -2405,9 +2415,21 @@ async function createBuildSystem() {
     { id: "lumbermill", label: "伐木场", url: "./models/town/building_lumbermill_blue.gltf", height: 5.45, radius: 3.35 },
     { id: "tower", label: "防御塔", url: "./models/town/building_tower_B_blue.gltf", height: 7.35, radius: 2.7 },
   ];
-  const loaded = await Promise.all(optionSpecs.map((spec) => loadGLTF(spec.url)));
+  const lumberDetailSpecs = [
+    ["lumber", "./models/town/resource_lumber.gltf"],
+    ["pallet", "./models/town/pallet.gltf"],
+    ["wheelbarrow", "./models/town/wheelbarrow.gltf"],
+    ["crate", "./models/town/crate_A_small.gltf"],
+  ];
+  const [loaded, loadedLumberDetails] = await Promise.all([
+    Promise.all(optionSpecs.map((spec) => loadGLTF(spec.url))),
+    Promise.all(lumberDetailSpecs.map(([, url]) => loadGLTF(url))),
+  ]);
   const definitions = new Map(
     optionSpecs.map((spec, index) => [spec.id, { ...spec, template: loaded[index].scene }])
+  );
+  const lumberDetailTemplates = new Map(
+    lumberDetailSpecs.map(([id], index) => [id, loadedLumberDetails[index].scene])
   );
 
   const root = new THREE.Group();
@@ -2434,6 +2456,107 @@ async function createBuildSystem() {
   const plotSurfaces = [];
   const raycaster = new THREE.Raycaster();
   const pointer = new THREE.Vector2();
+  const lumberBeamMaterial = new THREE.MeshStandardMaterial({ color: 0x6e4527, roughness: 0.94 });
+  const lumberLogMaterial = new THREE.MeshStandardMaterial({ color: 0xa86f3b, roughness: 0.96 });
+  const lumberRoofMaterial = new THREE.MeshStandardMaterial({ color: 0x315d82, roughness: 0.82 });
+  const lumberRopeMaterial = new THREE.MeshStandardMaterial({ color: 0x8b714d, roughness: 1 });
+
+  const cloneLumberDetail = (id, height, x, z, rotation = 0) => {
+    const object = lumberDetailTemplates.get(id).clone(true);
+    fitModelToHeight(object, height);
+    object.position.x = x;
+    object.position.z = z;
+    object.position.y += 0.14;
+    object.rotation.y = rotation;
+    setShadows(object);
+    return object;
+  };
+
+  const createLumberRack = (roofed = false) => {
+    const rack = new THREE.Group();
+    for (const x of [-1.05, 1.05]) {
+      for (const z of [-0.62, 0.62]) {
+        const post = new THREE.Mesh(new THREE.BoxGeometry(0.16, roofed ? 2.15 : 1.38, 0.16), lumberBeamMaterial);
+        post.position.set(x, roofed ? 1.08 : 0.69, z);
+        post.castShadow = true;
+        rack.add(post);
+      }
+    }
+    for (let row = 0; row < 3; row += 1) {
+      for (let depth = 0; depth < 2; depth += 1) {
+        const log = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.19, 1.92, 8), lumberLogMaterial);
+        log.rotation.z = Math.PI / 2;
+        log.position.set(0, 0.28 + row * 0.34, (depth - 0.5) * 0.48);
+        log.castShadow = true;
+        rack.add(log);
+      }
+    }
+    if (roofed) {
+      const roof = new THREE.Mesh(new THREE.BoxGeometry(2.62, 0.16, 1.72), lumberRoofMaterial);
+      roof.position.y = 2.18;
+      roof.rotation.z = -0.05;
+      roof.castShadow = true;
+      rack.add(roof);
+    }
+    return rack;
+  };
+
+  const createLumberHoist = () => {
+    const hoist = new THREE.Group();
+    const mast = new THREE.Mesh(new THREE.BoxGeometry(0.22, 3.3, 0.22), lumberBeamMaterial);
+    mast.position.y = 1.65;
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(2.15, 0.2, 0.2), lumberBeamMaterial);
+    arm.position.set(0.82, 3.13, 0);
+    const brace = new THREE.Mesh(new THREE.BoxGeometry(1.35, 0.13, 0.13), lumberBeamMaterial);
+    brace.position.set(0.45, 2.55, 0);
+    brace.rotation.z = Math.PI / 4;
+    const rope = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 1.35, 7), lumberRopeMaterial);
+    rope.position.set(1.75, 2.42, 0);
+    for (const mesh of [mast, arm, brace, rope]) {
+      mesh.castShadow = true;
+      hoist.add(mesh);
+    }
+    return hoist;
+  };
+
+  const applyLumbermillAppearance = (plot) => {
+    if (plot.upgradeGroup) plot.buildingGroup.remove(plot.upgradeGroup);
+    plot.upgradeGroup = null;
+    if (plot.builtType !== "lumbermill") return;
+
+    const details = new THREE.Group();
+    details.rotation.y = plot.buildingRotation;
+    details.add(cloneLumberDetail("lumber", 0.72, 2.55, 2.45, -0.18));
+
+    if (plot.buildingLevel >= 2) {
+      const rack = createLumberRack(false);
+      rack.position.set(-2.45, 0.14, 2.3);
+      rack.rotation.y = 0.08;
+      details.add(
+        rack,
+        cloneLumberDetail("wheelbarrow", 0.92, 2.65, 0.7, -0.72),
+        cloneLumberDetail("pallet", 0.22, -2.55, -0.8, 0.12)
+      );
+    }
+
+    if (plot.buildingLevel >= 3) {
+      const coveredRack = createLumberRack(true);
+      coveredRack.position.set(2.42, 0.14, -2.35);
+      coveredRack.rotation.y = Math.PI;
+      const hoist = createLumberHoist();
+      hoist.position.set(-2.68, 0.14, -2.25);
+      hoist.rotation.y = -0.2;
+      details.add(
+        coveredRack,
+        hoist,
+        cloneLumberDetail("lumber", 0.82, -2.45, 2.45, 0.2),
+        cloneLumberDetail("crate", 0.68, -1.65, -2.65, -0.14)
+      );
+    }
+
+    plot.upgradeGroup = details;
+    plot.buildingGroup.add(details);
+  };
 
   for (let index = 0; index < buildPlotPositions.length; index += 1) {
     const plotRoot = new THREE.Group();
@@ -2508,6 +2631,11 @@ async function createBuildSystem() {
       beacon,
       buildingGroup,
       builtType: null,
+      buildingLevel: 0,
+      buildingRotation: 0,
+      buildingModel: null,
+      upgradeGroup: null,
+      upgradePulse: 0,
       collisionRadius: 0,
       buildProgress: 1,
       npcSpawned: false,
@@ -2528,13 +2656,27 @@ async function createBuildSystem() {
     buildPanel.setAttribute("aria-hidden", String(!visible));
     if (!activePlot) return;
     const definition = activePlot.builtType ? definitions.get(activePlot.builtType) : null;
+    const lumbermill = activePlot.builtType === "lumbermill";
     buildPanel.classList.toggle("built", Boolean(definition));
+    buildPanel.classList.toggle("upgradeable", lumbermill);
     buildPlotTitle.textContent = definition
-      ? `地块 ${activePlot.index + 1} · ${definition.label}`
+      ? `地块 ${activePlot.index + 1} · ${definition.label}${lumbermill ? ` ${activePlot.buildingLevel}级` : ""}`
       : `地块 ${activePlot.index + 1} · 空闲`;
-    buildHint.textContent = definition
-      ? "可拆除当前建筑并重新选择"
-      : "点击建筑，或按数字键 1-8 建造";
+    if (lumbermill) {
+      const maxLevel = activePlot.buildingLevel >= 3;
+      upgradeBuildingButton.disabled = maxLevel || activePlot.buildProgress < 1;
+      upgradeBuildingButton.textContent = maxLevel
+        ? "已达最高等级 · 3名伐木工"
+        : `升级至 ${activePlot.buildingLevel + 1}级 · 增加1名伐木工`;
+      buildHint.textContent = maxLevel
+        ? "三级伐木场 · 3名工人白天出城伐木"
+        : "升级会扩建作业区并增加伐木工";
+    } else {
+      upgradeBuildingButton.disabled = true;
+      buildHint.textContent = definition
+        ? "可拆除当前建筑并重新选择"
+        : "点击建筑，或按数字键 1-8 建造";
+    }
   };
 
   const buildOnPlot = (plot, typeId, animate = true) => {
@@ -2552,11 +2694,15 @@ async function createBuildSystem() {
     plot.buildingGroup.scale.setScalar(animate ? 0.72 : 1);
     plot.buildProgress = animate ? 0 : 1;
     plot.builtType = typeId;
+    plot.buildingLevel = 1;
+    plot.buildingRotation = model.rotation.y;
+    plot.buildingModel = model;
     plot.collisionRadius = definition.radius;
     plot.npcSpawned = false;
     plot.marker.visible = false;
     plot.foundation.material.color.setHex(0x858077);
     plot.ringMaterial.color.setHex(0xd3b65c);
+    applyLumbermillAppearance(plot);
     if (animate) showThreat(`${definition.label} · 建造完成`);
     if (plot === activePlot) refreshPanel();
     return true;
@@ -2575,6 +2721,10 @@ async function createBuildSystem() {
     cityNpcSystem?.removePlot(activePlot.index);
     activePlot.buildingGroup.clear();
     activePlot.builtType = null;
+    activePlot.buildingLevel = 0;
+    activePlot.buildingModel = null;
+    activePlot.upgradeGroup = null;
+    activePlot.upgradePulse = 0;
     activePlot.collisionRadius = 0;
     activePlot.npcSpawned = false;
     activePlot.marker.visible = true;
@@ -2582,6 +2732,24 @@ async function createBuildSystem() {
     activePlot.ringMaterial.color.setHex(0x6ec5e2);
     refreshPanel();
     showThreat(`${removedName} · 已拆除`);
+    return true;
+  };
+
+  const upgrade = () => {
+    if (
+      !activePlot
+      || activePlot.builtType !== "lumbermill"
+      || activePlot.buildingLevel >= 3
+      || activePlot.buildProgress < 1
+    ) return false;
+    activePlot.buildingLevel += 1;
+    activePlot.collisionRadius = definitions.get("lumbermill").radius + (activePlot.buildingLevel - 1) * 0.12;
+    activePlot.upgradePulse = 0.58;
+    applyLumbermillAppearance(activePlot);
+    cityNpcSystem?.spawnForPlot(activePlot);
+    refreshPanel();
+    showThreat(`伐木场升级至 ${activePlot.buildingLevel}级 · ${activePlot.buildingLevel}名伐木工`);
+    resolveBuildPlotCollisions(knight?.root.position, 0.72);
     return true;
   };
 
@@ -2605,7 +2773,15 @@ async function createBuildSystem() {
         plot.buildingGroup.scale.setScalar(0.72 + ease * 0.28 + Math.sin(plot.buildProgress * Math.PI) * 0.035);
         if (plot.buildProgress >= 1 && !plot.npcSpawned) {
           cityNpcSystem?.spawnForPlot(plot);
+          if (plot === activePlot) refreshPanel();
         }
+      }
+      if (plot.upgradePulse > 0) {
+        plot.upgradePulse = Math.max(0, plot.upgradePulse - delta);
+        const progress = 1 - plot.upgradePulse / 0.58;
+        const pulse = Math.sin(progress * Math.PI) * 0.065;
+        plot.buildingGroup.scale.setScalar(1 + pulse);
+        if (plot.upgradePulse <= 0) plot.buildingGroup.scale.setScalar(1);
       }
     }
     if (nearest && nearest !== activePlot) {
@@ -2662,6 +2838,7 @@ async function createBuildSystem() {
     plots,
     optionIds: optionSpecs.map((spec) => spec.id),
     build,
+    upgrade,
     demolish,
     update,
     resolveCollision,
@@ -3136,6 +3313,7 @@ townUpgradeButton.addEventListener("click", upgradeTownCenter);
 document.querySelectorAll("[data-building]").forEach((button) => {
   button.addEventListener("click", () => buildSystem?.build(button.dataset.building));
 });
+upgradeBuildingButton.addEventListener("click", () => buildSystem?.upgrade());
 demolishBuildingButton.addEventListener("click", () => buildSystem?.demolish());
 
 renderer.domElement.addEventListener("pointerdown", (event) => {

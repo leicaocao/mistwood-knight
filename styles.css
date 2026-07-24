@@ -159,6 +159,7 @@ h1 { margin: 0; font-family: Georgia, "Songti SC", serif; font-size: clamp(30px,
 .build-options button:hover { border-color: rgba(118, 205, 239, .58); background: rgba(72, 139, 153, .24); }
 .build-options button kbd { min-width: 20px; height: 19px; font-size: 9px; }
 .build-options button span { font-size: 10px; }
+.upgrade-building,
 .demolish-building {
   display: none;
   width: 100%;
@@ -171,8 +172,17 @@ h1 { margin: 0; font-family: Georgia, "Songti SC", serif; font-size: clamp(30px,
   font: 11px inherit;
   cursor: pointer;
 }
+.upgrade-building {
+  margin-bottom: 7px;
+  border-color: rgba(225, 193, 91, .42);
+  background: rgba(119, 91, 24, .3);
+  color: #ffe59a;
+}
+.upgrade-building:hover:not(:disabled) { border-color: rgba(255, 221, 113, .68); background: rgba(143, 105, 26, .44); }
+.upgrade-building:disabled { cursor: default; opacity: .46; }
 .build-panel.built .build-options { display: none; }
 .build-panel.built .demolish-building { display: block; }
+.build-panel.built.upgradeable .upgrade-building { display: block; }
 .build-panel > small { display: block; margin-top: 10px; color: rgba(245, 241, 223, .5); font-size: 9px; letter-spacing: .04em; }
 
 .instructions {
